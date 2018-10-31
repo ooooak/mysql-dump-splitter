@@ -1,0 +1,6 @@
+[package]
+name = "sql-split"
+version = "0.1.0"
+authors = ["Ak <akshay.deep0@gmail.com>"]
+
+[dependencies]
