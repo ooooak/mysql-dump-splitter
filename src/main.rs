@@ -7,8 +7,6 @@ use std::io::Result;
 use std::io::prelude::*;
 use std::str;
 
-
-
 fn main() -> Result<()> {
     let file = File::open("C:\\Users\\Akshay Goswami\\Desktop\\test.txt").unwrap();
     let reader = reader::Reader::new(file);

@@ -131,8 +131,11 @@ impl Scanner{
                             break;
                         }
                     }
-                }
+                },
                 None => {
+                    println!("str {:?}", str::from_utf8(&collection));
+                    println!("str {:?}", self.reader.peek());
+                    println!("str {:?}", self.reader.get());
                     die("Error: unfinished values stream.");
                 },
             }
@@ -165,8 +168,6 @@ impl Scanner{
                             b'(' => {
                                 let tuple = self.read_till(b')');
                                 collection.extend(tuple);
-                                die("1");
-                                break ;
                             },
                             b'A'...b'Z' |
                             b'a'...b'z' => {
