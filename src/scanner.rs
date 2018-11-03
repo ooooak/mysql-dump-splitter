@@ -3,15 +3,11 @@ use std::fs::File;
 use std::io::{BufReader, Result};
 use std::io::prelude::*;
 use std::str;
-
-
+use reader::Reader;
 
 pub struct Scanner{
-    buffer: Vec<u8>,
-    index: usize,
-    reader: BufReader<File>,
+    reader: Reader,
     in_insert: bool,
-    bytes_read: usize,
 }
 
 fn die(text : &str) -> ! {
@@ -21,123 +17,34 @@ fn die(text : &str) -> ! {
 
 #[derive(Debug)]
 pub enum Token {
-    Comment(Vec<u8>),
-    CommentInline(Vec<u8>),
+    Eat(Vec<u8>),
     Insert(Vec<u8>),
     InsertValues(Vec<u8>),
-    Block(Vec<u8>),
-    SpacesOrLineFeeds(Vec<u8>)
 }
 
 impl Scanner{
-    pub fn new(file: File) -> Scanner {
-        let size: usize = 100 * 1024 * 1024; // 100mb 
-
-        // reader
-        let mut scanner = Scanner { 
-            buffer: vec![0; size],
-            reader: BufReader::new(file),
+    pub fn new(reader: Reader) -> Self {
+        Self {
+            reader: reader,
             in_insert: false,
-            index: 0,
-            bytes_read: 0,
-        };
-
-        scanner.read_buf();
-        scanner
-    }
-
-    #[inline(always)]
-    fn get(&mut self) -> Option<u8> {
-        if self.bytes_read == 0 {
-            // no buffer data
-            None
-        }else{
-            if let Some(item) = self.buffer.get(self.index) {
-                return if *item == 0 as u8{
-                    None
-                }else{
-                    Some(item.clone())
-                }
-            }
-            // ran out of data load next buffer data
-            self.read_buf();
-
-            
-            // try to read the value from index
-            // rec call
-            self.get()
         }
-    }
-
-    fn next(&mut self) -> Option<u8> {
-        let byte = self.get();
-        self.index += 1;
-        byte
-    }
-
-    #[inline(always)]
-    fn peek(&mut self) -> Option<u8> {
-        self.get()
-    }
-
-    #[inline(always)]
-    fn peek_next(&mut self) -> Option<u8> {
-        self.index += 1;
-        let item = self.get();
-        self.index -= 1;
-        item
-    }
-
-
-    fn read_buf(&mut self) {
-        match self.reader.read(&mut self.buffer) {
-            Ok(size) => {
-                self.bytes_read = size;
-                self.index = 0; // reset index
-            },
-            Err(_) => {
-                die("Unable to read buffer")
-            }
-        }
-    }
-
-    
-    fn multi_line_comment(&mut self) -> Token {
-        let mut collection = vec![];
-        loop {
-            let cr = self.next();
-            // eof
-            if cr.is_none() {
-                die("Unexpected end of the file.")
-            }
-
-            collection.push(cr.unwrap());
-            // end of the comment 
-            if cr == Some(b'*') && self.peek() == Some(b'/') {
-                let get_peeked = self.next();
-                collection.push(get_peeked.unwrap());
-                break
-            }
-        }
-
-        return Token::Comment(collection)
     }
 
     fn read_till(&mut self, item: u8) -> Vec<u8> {
         let mut collection = vec![];
 
         loop {
-            let byte = self.next();
+            let byte = self.reader.get();
             match byte {
                 Some(value) => {
                     collection.push(value);
-                    if value == item{
+                    if value == item {
                         break;
                     }
                 },
                 None => {
                     die("Unexpected end of the file.");
-                }       
+                }
             }
         }
         
@@ -149,66 +56,49 @@ impl Scanner{
         let mut collection = vec![];
 
         loop {
-            let byte = self.peek();
+            let byte = self.reader.peek();
             match byte {
                 Some(value) => {
                     if value == item {
                         break;
                     }
-
                     collection.push(value);
                     // skip the index
-                    self.next();
+                    self.reader.get();
                 },
                 None => {
                     die("Unexpected end of the file.");
-                }       
+                }
             }
         }
         
         collection
     }
 
-    fn parse_inline_comment(&mut self) -> Token {
-         let mut collection = vec![];
-
-        loop {
-            let byte = self.next();
-            match byte {
-                Some(value) => {
-                    collection.push(value);
-                    if value == b'\n'{
-                        break;
-                    }
-                },
-                None => { break }       
-            }
-        }
-        
-        Token::CommentInline(collection)
-    }
-
-    fn parse_block(&mut self) -> Token {
-        Token::Block(self.read_till(b';'))
-    }
+    
 
     fn keyword(&mut self) -> Vec<u8> {
         self.read_until(b' ')
     }
 
-    fn read_string(&mut self, byte: u8) -> Vec<u8> {
+    fn read_string(&mut self) -> Vec<u8> {
         let mut collection = vec![];
-        let mut last_byte = byte;
-        collection.push(byte);
+        let mut last_byte = self.reader.get();
+        collection.push(last_byte.unwrap());
 
         loop {
-            let byte = self.next();
-            collection.push(byte.unwrap());
-            if last_byte != b'\\' && byte == Some(b'\n'){                
-                break;
-            }
+            let byte = self.reader.get();
+            if let Some(item) = byte {
+                collection.push(item);
+                if byte == Some(b'\'')  && last_byte != Some(b'\\') {
+                    // none escaped string 
+                    break;
+                }
 
-            last_byte = byte.unwrap();
+                last_byte = byte;
+            }else{
+                die("Error: Unable to close the string")
+            }
         }
 
         collection
@@ -219,84 +109,153 @@ impl Scanner{
         let mut closed = false;
 
         loop {
-            let byte = self.next();
-            if byte.is_none(){
-                die("Unexpected end of the file.");
-            }
-
-            if byte == Some(b'\''){
-                let string = self.read_string(byte.unwrap());
-                collection.extend(string);
-                continue;
-            }
-
-            collection.push(byte.unwrap());
-            match byte.unwrap() {
-                b';' => {
-                    self.in_insert = false;    
-                    break;    
+            let byte = self.reader.peek();
+            match byte {
+                Some(b'\'' ) => {
+                    let string = self.read_string();
+                    collection.extend(string);
                 },
-                b')' => {
-                    closed = true;
-                },
-                b',' => {
-                    if closed == true {
-                        break;
+                Some(byte) => {
+                    self.reader.increment_index();
+                    collection.push(byte);
+                    if  byte == b';' {
+                            self.in_insert = false;    
+                            break;    
+                    }else if byte == b')' {
+                        // values statements are closed by tow items `)` and `,`.
+                        closed = true;
+                    }else if byte == b','{
+                        // `,` could be inside values, so we need to make sure 
+                        // we are at end of the tuple
+                        if closed == true {
+                            break;
+                        }
                     }
-                },
-                _ => {
-                    continue
                 }
+                None => {
+                    die("Error: unfinished values stream.");
+                },
             }
         }
 
         Some(Token::InsertValues(collection))
     }
 
+    /**
+     * we should have built a proper parser
+     * case one: 
+     *  INSERT INTO distributors (`id`, `name`, `VALUES`)
+     *         VALUES (1, 'str', 'none');
+     * 
+     * case two: 
+     *  INSERT INTO `distributors` VALUES (1, 'str');
+     * 
+     * **/ 
+    fn insert_statement(&mut self) -> Vec<u8> {
+        // read till we value as key word 
+        // we will have empty
+        let mut keyword_count = 0;
+        let mut collection = vec![];
+
+        loop {
+            if keyword_count == 2 {
+                match self.reader.peek() {
+                    Some(item) => {
+                        match item {
+                            b'(' => {
+                                let tuple = self.read_till(b')');
+                                collection.extend(tuple);
+                                die("1");
+                                break ;
+                            },
+                            b'A'...b'Z' |
+                            b'a'...b'z' => {
+                               break;
+                            }, 
+                            _ => {
+                                collection.push(item);
+                                self.reader.increment_index();
+                                continue;
+                            }
+                        }
+                    },
+                    None => {
+                        println!("{:?}", &collection);
+                        die("Error: Unexpected end of the file")                      
+                    },
+                }
+            }
+
+            match self.reader.peek() {
+                Some(item) => {
+                    match item {
+                        b'a'...b'z' |
+                        b'A'...b'Z' => {
+                            keyword_count += 1;
+                            let keyword = self.keyword();
+                            collection.extend(keyword);                            
+                        },
+                        _  => {
+                            collection.push(item);
+                            self.reader.increment_index();
+                        },
+                    }
+                },
+                None => {
+                    println!("{:?}", &collection);
+                    die("Error: Unexpected end of the file")
+                },
+            }
+        }
+
+        collection
+    }
+
 
     pub fn token(&mut self) -> Option<Token> {
-        let b = self.peek();
+        let b = self.reader.peek();
         if b.is_none() {
             return None
         }
 
-        if self.in_insert == true{
+        if self.in_insert {
             return self.values_statement()
         }
         
         let token = match b.unwrap() {
             b'/' => {
-                if self.peek_next() == Some(b'*') {
+                if self.reader.peek_next() == Some(b'*') {
                     self.multi_line_comment()
                 }else{
                     self.parse_block()
                 }
             },
             b'-' => {
-                if self.peek_next() == Some(b'-') {
+                if self.reader.peek_next() == Some(b'-') {
                     self.parse_inline_comment()
                 }else{
                     self.parse_block()
                 }
             },
-            b'a'...b'z' | 
+            b'a'...b'z' |
             b'A'...b'Z' => {
                 let mut keyword = self.keyword();
-                let mut insert_statement = keyword.clone();
                 let str_val = str::from_utf8(&keyword).unwrap();
+                let mut insert_statement = vec![];
+                insert_statement.extend(&keyword);
 
                 match str_val.to_lowercase().as_ref() {
                     "insert" => {
-                        let items = self.read_till(b')');
-                        insert_statement.extend(items);
                         self.in_insert = true;
-
+                        let statement = self.insert_statement();
+                        insert_statement.extend(statement);
                         Token::Insert(insert_statement)
                     },
                     _ => {
                         let items = self.read_till(b';');
-                        insert_statement.extend(items);
-                        Token::Block(insert_statement)
+
+                        insert_statement.extend(&items);
+                        Token::Eat(insert_statement)
                     },
                 }
             },
@@ -304,13 +263,13 @@ impl Scanner{
             b' ' | b'\n' | b'\r' => {
                 let mut collection = vec![];
                 loop {
-                    match self.peek() {
+                    match self.reader.peek() {
                         byte @ Some(b' ') | 
                         byte @ Some(b'\n') | 
                         byte @ Some(b'\r') => {
                             collection.push(byte.unwrap());
                             // TODO: we can just up the index
-                            self.next();
+                            self.reader.increment_index();
                         }
                         _ => {
                             break
@@ -318,7 +277,7 @@ impl Scanner{
                     }
                 }
                 
-                Token::SpacesOrLineFeeds(collection)
+                Token::Eat(collection)
             }
             _ => {
                 self.parse_block()
@@ -326,5 +285,51 @@ impl Scanner{
         };
 
         Some(token)
+    }
+
+    fn parse_inline_comment(&mut self) -> Token {
+         let mut collection = vec![];
+
+        loop {
+            let byte = self.reader.get();
+            match byte {
+                Some(value) => {
+                    collection.push(value);
+                    if value == b'\n'{
+                        break;
+                    }
+                },
+                None => {
+                    break
+                }
+            }
+        }
+        
+        Token::Eat(collection)
+    }
+
+    fn parse_block(&mut self) -> Token {
+        Token::Eat(self.read_till(b';'))
+    }
+
+    fn multi_line_comment(&mut self) -> Token {
+        let mut collection = vec![];
+        loop {
+            let cr = self.reader.get();
+            // eof
+            if cr.is_none() {
+                die("Error: Incomplete multi line comment .")
+            }
+
+            collection.push(cr.unwrap());
+            // end of the comment 
+            if cr == Some(b'*') && self.reader.peek() == Some(b'/') {
+                let get_peeked = self.reader.get();
+                collection.push(get_peeked.unwrap());
+                break
+            }
+        }
+
+        return Token::Eat(collection)
     }
 }

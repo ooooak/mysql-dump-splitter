@@ -55,10 +55,7 @@ impl SQLWriter {
     match token {
         Some(item) => {
           match item {
-            Token::Comment(item) |
-            Token::CommentInline(item) |
-            Token::Block(item) |
-            Token::SpacesOrLineFeeds(item) => {
+            Token::Eat(item) => {
                 self.total += item.len();
                 self.collection.extend(item);
 
@@ -71,8 +68,6 @@ impl SQLWriter {
               self.total += item.len();
               self.last_insert = item.clone();
               self.collection.extend(item);
-              
-
               if self.total >= self.max_write_size {
                 self.collection.push(b';'); // end block
                 self.write();
@@ -93,13 +88,10 @@ impl SQLWriter {
                   // we need to append last insert statement. 
                   self.push_last_insert_into_collection();                                
                 }
-
                 self.collection.extend(item);
               }
-
             }
           }
-
           true
         },
         None => {
