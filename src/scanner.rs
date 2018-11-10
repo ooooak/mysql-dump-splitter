@@ -1,12 +1,10 @@
 use std::process;
-use std::fs::File;
-use std::io::{BufReader, Result};
-use std::io::prelude::*;
 use std::str;
 use reader::Reader;
+use std::io;
 
-pub struct Scanner{
-    reader: Reader,
+pub struct Scanner<T>{
+    reader: Reader<T>,
     in_insert: bool,
 }
 
@@ -22,8 +20,8 @@ pub enum Token {
     InsertValues(Vec<u8>),
 }
 
-impl Scanner{
-    pub fn new(reader: Reader) -> Self {
+impl<T> Scanner<T> where T: io::Read {
+    pub fn new(reader: Reader<T>) -> Self {
         Self {
             reader: reader,
             in_insert: false,

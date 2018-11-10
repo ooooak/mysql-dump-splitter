@@ -1,28 +1,27 @@
-use std::process;
-use std::fs::File;
-use std::io::{BufReader, Result};
+use std::io::{BufReader};
 use std::io::prelude::*;
-use std::str;
+use std::io;
 
 
 
-pub struct Reader{
+pub struct Reader<T>{
     buffer: Vec<u8>,
     index: usize,
-    reader: BufReader<File>,
+    reader: BufReader<T>,
     bytes_read: usize,
+    buffer_size: usize,
 }
 
-impl Reader{
-    pub fn new(file: File) -> Self {
-        let size: usize = 1 * 1024 * 1024; // 100mb 
-
+impl<T> Reader<T> where 
+    T: io::Read {
+    pub fn new(file: T, buffer_size: usize) -> Self {
         // reader
         let mut reader = Self {
-            buffer: vec![0; size],
+            buffer: vec![0; buffer_size],
             reader: BufReader::new(file),
             index: 0,
             bytes_read: 0,
+            buffer_size: buffer_size,
         };
 
         reader.read_buf();
@@ -32,24 +31,20 @@ impl Reader{
     #[inline(always)]
     fn raw_get(&mut self) -> Option<u8> {
         if self.bytes_read == 0 {
-            // no buffer data
-            None
-        }else{
-            if let Some(item) = self.buffer.get(self.index) {
-                return if *item == 0 as u8{
-                    None
-                }else{
-                    Some(item.clone())
-                }
-            }
-            // ran out of data load next buffer data
-            self.read_buf();
-
-            
-            // try to read the value from index
-            // rec call
-            self.get()
+            return None
         }
+
+        if let Some(item) = self.buffer.get(self.index) {
+            return if *item == 0 as u8{
+                None
+            }else{
+                Some(item.clone())
+            }
+        }
+
+        // out of index load next buffer
+        self.read_buf();
+        self.raw_get()
     }
 
     pub fn get(&mut self) -> Option<u8> {
@@ -73,6 +68,7 @@ impl Reader{
 
 
     fn read_buf(&mut self) {
+        self.buffer = vec![0; self.buffer_size];
         match self.reader.read(&mut self.buffer) {
             Ok(size) => {
                 self.bytes_read = size;
@@ -86,5 +82,73 @@ impl Reader{
 
     pub fn increment_index(&mut self){
         self.index += 1;
+    }
+}
+
+
+#[cfg(test)]
+mod reader_test{
+    use std::fs::File;
+    use super::Reader;
+    // use std::io::prelude::*;
+    // use std::str;
+
+    #[test]
+    fn empty_file(){
+        let file = File::open("./example-files/empty.txt").unwrap();
+        let mut reader = Reader::new(file, 1024);
+        assert_eq!(reader.get(), None);
+    }
+
+    #[test]
+    fn get(){
+        for n in 1..=100 {
+            let file = File::open("./example-files/content.txt").unwrap();
+            let mut reader = Reader::new(file, n);
+
+            // let mut col = vec![];
+            // loop {                
+            //     let item = reader.get();
+            //     if !item.is_none() {
+            //         col.push(item.unwrap());
+            //         continue;
+            //     }
+            //     println!("buff: {:?} output: {:?}", n, str::from_utf8(&col));
+            //     break;
+            // }
+            
+            assert_eq!(reader.get(), Some(b'1'));
+            assert_eq!(reader.get(), Some(b'2'));
+            assert_eq!(reader.get(), Some(b'3'));
+            assert_eq!(reader.get(), Some(b'4'));
+            assert_eq!(reader.get(), Some(b'5'));
+            assert_eq!(reader.get(), Some(b'6'));
+            assert_eq!(reader.get(), Some(b'7'));
+            assert_eq!(reader.get(), Some(b'8'));
+            assert_eq!(reader.get(), Some(b'9'));
+            assert_eq!(reader.get(), Some(b'0'));
+            assert_eq!(reader.get().is_none(), true);
+        }
+    }
+
+    #[test]
+    fn peek(){
+        let file = File::open("./example-files/content.txt").unwrap();
+        let mut reader = Reader::new(file, 2);
+        assert_eq!(reader.peek(), Some(b'1'));
+        let _skip_it = reader.get();
+
+        assert_eq!(reader.peek(), Some(b'2'));
+    }
+
+    #[test]
+    fn peek_next(){
+        let file = File::open("./example-files/content.txt").unwrap();
+        let mut reader = Reader::new(file, 10);
+        assert_eq!(reader.peek_next(), Some(b'2'));
+        assert_eq!(reader.get(), Some(b'1'));
+        assert_eq!(reader.get(), Some(b'2'));
+        assert_eq!(reader.peek(), Some(b'3'));
+        assert_eq!(reader.peek_next(), Some(b'4'));
     }
 }

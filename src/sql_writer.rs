@@ -35,12 +35,9 @@ impl SQLWriter {
     self.file_number += 1;
 
 
-    let file_name = format!("./tests/sql/{:?}.sql", self.file_number);
+    let file_name = format!("./example-files/output/{:?}.sql", self.file_number);
     let mut buffer = File::create(file_name).unwrap();
     buffer.write_all(&collection).unwrap();
-    
-
-      // thread::spawn(move || {});
   }
 
 
