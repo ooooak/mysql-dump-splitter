@@ -35,7 +35,7 @@ impl<T> Reader<T> where
         }
 
         if let Some(item) = self.buffer.get(self.index) {
-            return if *item == 0 as u8{
+            return if self.bytes_read <= self.index {
                 None
             }else{
                 Some(item.clone())
@@ -68,7 +68,6 @@ impl<T> Reader<T> where
 
 
     fn read_buf(&mut self) {
-        self.buffer = vec![0; self.buffer_size];
         match self.reader.read(&mut self.buffer) {
             Ok(size) => {
                 self.bytes_read = size;
@@ -127,6 +126,7 @@ mod reader_test{
             assert_eq!(reader.get(), Some(b'8'));
             assert_eq!(reader.get(), Some(b'9'));
             assert_eq!(reader.get(), Some(b'0'));
+            assert_eq!(reader.get().is_none(), true);
             assert_eq!(reader.get().is_none(), true);
         }
     }
