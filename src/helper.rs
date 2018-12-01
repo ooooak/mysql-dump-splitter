@@ -1,3 +1,5 @@
+use std::process;
+
 fn sleep(sec: u64){
     println!("sleep");
     use std::{thread, time};
@@ -7,3 +9,8 @@ fn sleep(sec: u64){
     thread::sleep(from_millis);
 }
 
+
+pub fn die(text : &str) -> ! {
+    println!("{}", text);
+    process::exit(0);
+}

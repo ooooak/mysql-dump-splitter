@@ -1,51 +1,64 @@
-mod scanner;
-mod sql_writer;
+mod parser;
+mod writer;
 mod reader;
+mod cli;
+mod tokenizer;
+mod helper;
 
 use std::fs::File;
 use std::io::Result;
 use std::io::prelude::*;
 use std::str;
+use std::env;
+use std::process;
+
+
+use writer::Writer;
+use parser::Parser;
+use parser::Ast;
+use reader::Reader;
+use tokenizer::Tokenizer;
+
+
+fn die(text : &str) -> ! {
+    println!("{}", text);
+    process::exit(0);
+}
+
+
+
+fn get_file() -> File{
+    match cli::file_path() {
+        Ok(path) => {
+            match File::open(path) {
+                Ok(fd) => fd,
+                Err(e) => {
+                    println!("{:?}", e);
+                    process::exit(0)
+                },
+            }
+        },
+        Err(e) => die(e),
+    }
+}
+
+
 
 fn main() -> Result<()> {
-    
-    let size: usize = 1 * 1024 * 1024; // 1mb 
-    let file = File::open("C:\\Users\\Akshay Goswami\\Desktop\\test.txt").unwrap();
-    let reader = reader::Reader::new(file, size);
-    let mut s = scanner::Scanner::new(reader);
+
+    let read_buffer: usize = 1 * 1024 * 1024; // 1mb 
     let max_output_buff = 10 * 1024 * 1024; // 10mb
-    let mut sql_writer = sql_writer::SQLWriter::new(max_output_buff);
-    let mut total = 0;
+    let file = get_file();
+    // let reader = ;
+    let mut tokenizer = Tokenizer::new(Reader::new(file, read_buffer));
+    let mut parser = Parser::new(tokenizer);
 
-    loop{
-        println!("total: {}", total / 1024 / 1024);
+    let mut writer = Writer::new(max_output_buff);
 
-        match s.token() {
-            Some(item) => {
-                match item {
-                    scanner::Token::Eat(i) => {
-                        total += i.len();
-                        // println!("Eat: {:?}", str::from_utf8(&i))
-                    },
-                    scanner::Token::InsertValues(i) => {
-                        total += i.len();
-                        // println!("InsertValues: {:?}", str::from_utf8(&i))
-                    },
-                    scanner::Token::Insert(i) => {
-                        total += i.len();
-                        // println!("InsertValues: {:?}", str::from_utf8(&i))
-                    },
-                }
-            },
-            None => {
-                break;
-            },
+    loop {
+        if !writer.process(parser.ast()) {
+            break;
         }
-
-        // if !sql_writer.process(s.token()) {
-        //     break;
-        // }
-    }
-    
+    }    
     Ok(())
 }
