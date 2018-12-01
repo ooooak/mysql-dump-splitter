@@ -3,14 +3,14 @@ use reader::Reader;
 use std::io;
 use helper::die;
 
-#[derive(Debug,PartialEq)]
+#[derive(Debug,PartialEq,Clone)]
 pub enum Token{
     String(Vec<u8>),
     Keyword(Vec<u8>),
     Block(Vec<u8>),
     Comment(Vec<u8>),
     InlineComment(Vec<u8>),
-
+    
     // Any thing that starts with `
     Identifier(Vec<u8>),  
     Ignore(u8),
@@ -33,9 +33,14 @@ impl Token {
 
     }
 
-    fn log_byte(&self, byte: u8){
+
+    fn log_bytes(&self, index: &str, bytes: &Vec<u8>){
+        println!("{}: {:?}", index, str::from_utf8(&bytes).unwrap())
+    }
+
+    fn log_byte(&self, index: &str, byte: u8){
         let vc = vec![byte];
-        println!("Ignore: {:?}", str::from_utf8(&vc).unwrap())
+        self.log_bytes(index, &vc);
     }
 
     pub fn len(&self) -> usize {
@@ -55,29 +60,19 @@ impl Token {
         }
     }
 
-    pub fn log(&self){
+    pub fn log(&self) {
         match self {
-            Token::Keyword(chunk) => {
-                println!("Keyword: {:?}", str::from_utf8(&chunk).unwrap())
-            },
-            Token::Block(chunk) => {
-                println!("Block: {:?}", str::from_utf8(&chunk).unwrap())
-            },
-            Token::Comment(chunk) =>{
-                println!("Comment: {:?}", str::from_utf8(&chunk).unwrap())
-            },
-            Token::InlineComment(chunk) => {
-                println!("InlineComment: {:?}", str::from_utf8(&chunk).unwrap())
-            },
-            Token::Identifier(chunk) => {
-                println!("Identifier: {:?}", str::from_utf8(&chunk).unwrap())
-            },
-
-            Token::Ignore(byte) => self.log_byte(byte.clone()),
-            Token::Comma => self.log_byte(b','),
-            _ => {
-                println!("missing");
-            }
+            Token::String(chunk) => self.log_bytes("String",  chunk),
+            Token::Keyword(chunk) => self.log_bytes("Keyword",  chunk),
+            Token::Block(chunk) => self.log_bytes("Block",  chunk),
+            Token::Comment(chunk) => self.log_bytes("Comment",  chunk),
+            Token::InlineComment(chunk) => self.log_bytes("InlineComment",  chunk),
+            Token::Identifier(chunk) => self.log_bytes("Identifier",  chunk),
+            Token::Ignore(byte) => self.log_byte("Ignore", byte.clone()),
+            Token::Comma => self.log_byte("Comma", b','),
+            Token::LP => self.log_byte("LP", b'('),
+            Token::RP => self.log_byte("RP", b')'),
+            Token::SemiColon => self.log_byte("SemiColon", b';'),
         }
     }
 }
@@ -107,7 +102,7 @@ impl<T> Tokenizer<T> where T: io::Read {
                     }
                 },
                 None => {
-                    die("Unexpected end of the file.");
+                    die("Error: Unexpected end of the file.");
                 }
             }
         }
@@ -156,8 +151,7 @@ impl<T> Tokenizer<T> where T: io::Read {
                     }
                 },
                 None => {
-                    // TODO: better error reporting
-                    die("Unexpected end of the file.");
+                    die("Error: While parsing keyword.");
                 }
             }
         }
@@ -180,7 +174,7 @@ impl<T> Tokenizer<T> where T: io::Read {
                 }
                 last_byte = item;
             }else{
-                die("Error: Unable to close the string")
+                die("Error: Unclosed string.")
             }
         }
 

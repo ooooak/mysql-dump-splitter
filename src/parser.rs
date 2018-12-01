@@ -1,10 +1,15 @@
 use std::str;
 use helper::die;
+use helper::dump;
 use tokenizer::Tokenizer;
 use tokenizer::Token;
 use std::io;
 
-pub enum Ast {
+/**
+ * As long as we are not doing anything crazy with
+ * ast we are going to keep it as list of tokens.
+ */ 
+pub enum TokenStream {
     Insert(Vec<Token>),
     Values(Vec<Token>),
     Ignore(Token)
@@ -20,31 +25,8 @@ impl<T> Parser<T> where T: io::Read{
             tokenizer: tokenizer
         }
     }
-
-    /**
-     * case one: 
-     *  INSERT INTO distributors (`id`, `name`, `VALUES`)
-     *         VALUES (1, 'str', 'none');
-     * 
-     * case two: 
-     *  INSERT INTO `distributors` VALUES (1, 'str');
-     * 
-     * **/ 
-
-
-    /**  
-     * insert into x
-     *  values (1, 2,3 4),
-     *  values (1, 2,3 4),
-     * max output buffer reached write file 
-     * replace ',' with ';'
-     * in insert ? get last insert statement
-     *  values (1, 2,3 4),
-     *  values (1, 2,3 4),
-     *  values (1, 2,3 4);
-     * fn insert_statement(&mut self) -> Vec<u8> {}
-     * */
-     pub fn read_while(&mut self, token: Token) -> Vec<Token> {
+    
+    pub fn read_while(&mut self, token: Token) -> Vec<Token> {
         let mut collection = vec![];
         loop {
             match self.tokenizer.token() {
@@ -52,6 +34,8 @@ impl<T> Parser<T> where T: io::Read{
                     if t == token {
                         collection.push(t);
                         break
+                    }else{
+                        collection.push(t);
                     }
                 },
                 None => {
@@ -59,43 +43,31 @@ impl<T> Parser<T> where T: io::Read{
                 },
             }
         }
-
         collection
-     }
+    }
 
-
-    /**
-     * 
-     * Case 1: values (1, 2,3 4),
-     * 
-     * Caee 2: values (1, 2,3 4);
-     * 
-     *  
-     **/ 
     pub fn values(&mut self, head:Token) -> Vec<Token> {
         let mut collection = vec![head];
-
         loop {
             match self.tokenizer.token() {
-                Some(token) => {
-                    match token {
-                        Token::LP => {
-                            collection.extend(self.read_while(Token::RP));
-                        },
-                        Token::Comma => {
-                            collection.push(token);
-                            break;
-                        },
-                        Token::SemiColon => {
-                            collection.push(token);
-                            break;
-                        }
-                        _ => {
-                            collection.push(token);                            
-                        }
-                    }
+                Some(token @ Token::LP) => {
+                    collection.push(token);
+                    collection.extend(self.read_while(Token::RP));
                 },
-                None => die("Error: invalid end of file"),
+                Some(token @ Token::Comma) => {
+                    collection.push(token);
+                    break;
+                },
+                Some(token @ Token::SemiColon) => {
+                    collection.push(token);
+                    break;
+                },
+                Some(token @ _) => {
+                    collection.push(token);
+                }
+                None => {
+                    die("Error: Unable to parse values.")
+                },
             }
         }
 
@@ -107,39 +79,38 @@ impl<T> Parser<T> where T: io::Read{
      * Case one: insert into `x` values (1, 4);
      * Case two: insert into x (id, price) values (1, 4);
      **/
-    fn insert(&mut self, head:Token) -> Vec<Token>{
+    fn insert(&mut self, head:Token) -> Vec<Token> {
         let mut collection = vec![head];
-
         loop {
             match self.tokenizer.token() {
                 Some(token) => {
-                    if token.keyword("value") {
+                    if token.keyword("values") {
                         collection.extend(self.values(token));
                         break;
                     }else{
                         collection.push(token);
                     }
                 },
-                None => die("Error: invalid end of file"),
+                None => {
+                    die("Error: Incomplete Insert statement.");
+                },
             }
         }
-
         collection
     }
-
-
-    pub fn ast(&mut self) -> Option<Ast> {        
+    
+    pub fn token_stream(&mut self) -> Option<TokenStream> {
         match self.tokenizer.token() {
             Some(token) => {
                 let mut output = vec![];
                 if token.keyword("insert") {
                     output.extend(self.insert(token));
-                    Some(Ast::Insert(output))
-                }else if token.keyword("value") {
+                    Some(TokenStream::Insert(output))
+                }else if token.keyword("values") {
                     output.extend(self.values(token));
-                    Some(Ast::Values(output))
+                    Some(TokenStream::Values(output))
                 }else{
-                    Some(Ast::Ignore(token))
+                    Some(TokenStream::Ignore(token))
                 }
             },
             None => None,

@@ -1,5 +1,5 @@
 mod parser;
-mod writer;
+mod splitter;
 mod reader;
 mod cli;
 mod tokenizer;
@@ -7,15 +7,17 @@ mod helper;
 
 use std::fs::File;
 use std::io::Result;
-use std::io::prelude::*;
+// use std::io::prelude::*;
 use std::str;
-use std::env;
+// use std::env;
 use std::process;
 
 
-use writer::Writer;
+use helper::dump;
+use splitter::Splitter;
+use splitter::SplitterState;
 use parser::Parser;
-use parser::Ast;
+// use parser::TokenStream;
 use reader::Reader;
 use tokenizer::Tokenizer;
 
@@ -45,20 +47,26 @@ fn get_file() -> File{
 
 
 fn main() -> Result<()> {
-
-    let read_buffer: usize = 1 * 1024 * 1024; // 1mb 
-    let max_output_buff = 10 * 1024 * 1024; // 10mb
     let file = get_file();
-    // let reader = ;
-    let mut tokenizer = Tokenizer::new(Reader::new(file, read_buffer));
+    let read_buffer: usize = 1 * 1024 * 1024; // 1mb
+    let tokenizer = Tokenizer::new(Reader::new(file, read_buffer));
     let mut parser = Parser::new(tokenizer);
-
-    let mut writer = Writer::new(max_output_buff);
+    let max_output_buff = 10 * 1024 * 1024; // 10mb
+    let mut splitter = Splitter::new(max_output_buff);
 
     loop {
-        if !writer.process(parser.ast()) {
-            break;
+        match splitter.process(parser.token_stream()) {
+            SplitterState::Chunk(tokens) => {
+                dump(&tokens);
+                break;
+            },
+            SplitterState::Done(tokens) => {
+                dump(&tokens);
+                break;
+            },
+            SplitterState::Continue => continue,
         }
-    }    
+    }
+
     Ok(())
 }

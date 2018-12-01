@@ -1,4 +1,5 @@
 use std::process;
+use tokenizer::Token;
 
 fn sleep(sec: u64){
     println!("sleep");
@@ -13,4 +14,17 @@ fn sleep(sec: u64){
 pub fn die(text : &str) -> ! {
     println!("{}", text);
     process::exit(0);
+}
+
+pub fn dump(tokens: &Vec<Token>) {
+    for token in tokens {
+        token.log()
+    }
+}
+
+    
+pub fn write(){
+    // let file_name = format!("./example-files/output/{:?}.sql", self.file_number);
+    // let mut buffer = File::create(file_name).unwrap();
+    // buffer.write_all(&collection).unwrap();
 }
