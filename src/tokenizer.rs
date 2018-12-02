@@ -10,7 +10,6 @@ pub enum Token{
     Block(Vec<u8>),
     Comment(Vec<u8>),
     InlineComment(Vec<u8>),
-    
     // Any thing that starts with `
     Identifier(Vec<u8>),  
     Ignore(u8),
@@ -30,10 +29,24 @@ impl Token {
             },
             _ => false,
         }
-
     }
 
-
+    pub fn value(&self, collection: &mut Vec<u8>) {
+        match self {
+            Token::String(chunk) => collection.extend(chunk),
+            Token::Keyword(chunk) => collection.extend(chunk),
+            Token::Block(chunk) => collection.extend(chunk),
+            Token::Comment(chunk) => collection.extend(chunk),
+            Token::InlineComment(chunk) => collection.extend(chunk),
+            Token::Identifier(chunk) => collection.extend(chunk),
+            Token::Ignore(byte) => collection.push(*byte),
+            Token::Comma => collection.push(b','),
+            Token::LP => collection.push(b'('),
+            Token::RP => collection.push(b')'),
+            Token::SemiColon => collection.push(b';'),
+        }        
+    }
+    
     fn log_bytes(&self, index: &str, bytes: &Vec<u8>){
         println!("{}: {:?}", index, str::from_utf8(&bytes).unwrap())
     }
@@ -110,33 +123,8 @@ impl<T> Tokenizer<T> where T: io::Read {
         collection
     }
 
-
-    fn read_until(&mut self, item: u8) -> Vec<u8> {
-        let mut collection = vec![];
-
-        loop {
-            let byte = self.reader.peek();
-            match byte {
-                Some(value) => {
-                    if value == item {
-                        break;
-                    }
-                    collection.push(value);
-                    // skip the index
-                    self.reader.get();
-                },
-                None => {
-                    die("Unexpected end of the file.");
-                }
-            }
-        }
-        
-        collection
-    }
-
     fn keyword(&mut self) -> Vec<u8> {
         let mut collection = vec![];
-
         loop {
             let byte = self.reader.peek();
             match byte {

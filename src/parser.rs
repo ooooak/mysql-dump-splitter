@@ -12,7 +12,7 @@ use std::io;
 pub enum TokenStream {
     Insert(Vec<Token>),
     Values(Vec<Token>),
-    Ignore(Token)
+    Ignore(Token),
 }
 
 pub struct Parser<T> {

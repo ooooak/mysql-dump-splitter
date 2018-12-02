@@ -73,6 +73,7 @@ impl Splitter {
         let maxed_out = self.total >= self.max_write_size;
         match (self.eof, maxed_out) {
             (true, _) => {
+                self.total = 0;
                 SplitterState::Done(self.pull_collection())
             },
             (_, true) => {
@@ -81,6 +82,8 @@ impl Splitter {
                     let len  = collection.len();
                     collection[len - 1] = Token::SemiColon;
                 }
+                
+                self.total = 0;
                 SplitterState::Chunk(collection)
             },
             _ => {
@@ -97,7 +100,7 @@ impl Splitter {
         if self.in_insert_statement && self.collection.len() == 0 {
             self.collection.extend(self.last_insert.clone());
         }
-
+        
         match token {
             Some(item) => {
                 match item {
@@ -122,15 +125,25 @@ impl Splitter {
                             _ => false,
                         };
 
-                        if self.in_insert_statement == false{
+                        if self.in_insert_statement == false {
                             self.last_insert = vec![];
                         }
 
+                        self.collection.extend(tokens);
                         self.state()
                     },
                     TokenStream::Ignore(token) => {
-                        self.collection.push(token);
-                        self.state()
+                        match token {
+                            Token::SemiColon => {
+                                self.collection.push(token);
+                                // we can only send finished block
+                                self.state()
+                            },
+                            _ => {
+                                self.collection.push(token);
+                                SplitterState::Continue
+                            }
+                        }
                     }
                 }
             },

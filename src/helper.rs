@@ -1,5 +1,8 @@
 use std::process;
 use tokenizer::Token;
+use std::fs::File;
+use std::io::prelude::*;
+
 
 fn sleep(sec: u64){
     println!("sleep");
@@ -23,8 +26,11 @@ pub fn dump(tokens: &Vec<Token>) {
 }
 
     
-pub fn write(){
-    // let file_name = format!("./example-files/output/{:?}.sql", self.file_number);
-    // let mut buffer = File::create(file_name).unwrap();
-    // buffer.write_all(&collection).unwrap();
+pub fn write(file_name: String, tokens: Vec<Token>){
+    let mut output = vec![];
+    for token in tokens {
+        token.value(&mut output)
+    }
+    let mut buffer = File::create(file_name).unwrap();
+    buffer.write_all(&output).unwrap();
 }
