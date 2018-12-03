@@ -1,16 +1,21 @@
 use parser::TokenStream;
+use parser::Parser;
 use tokenizer::Token;
-use std::io::Write;
-use std::thread;
-use std::fs::File;
-use std::io::Result;
-use std::io::prelude::*;
-use helper::dump;
+use tokenizer::Tokenizer;
+use reader::Reader;
+use std::io;
 
+pub struct SplitterSettings<T>{
+    // Bytes to read 
+    pub read: usize,
+    // bytes to write
+    pub write: usize,
+    pub file: T,
+}
 
-
-#[derive(Debug)]
-pub struct Splitter{
+// #[derive(Debug)]
+pub struct Splitter<T>{
+    parser: Parser<T>,
     in_insert_statement: bool,
     collection: Vec<Token>,
     total: usize,
@@ -28,14 +33,19 @@ pub enum SplitterState{
     Continue, 
 }
 
-impl Splitter {
-    pub fn new(max_write_size: usize) -> Self {
+/**
+ * Splitter Should only send Valid output
+ * */ 
+impl<T> Splitter<T> where T: io::Read {
+    pub fn new(settings: SplitterSettings<T>) -> Self {
+        let tokenizer = Tokenizer::new(Reader::new(settings.file, settings.read));
         Self {
+            parser: Parser::new(tokenizer),
             total: 0,
             collection: vec![],
             last_insert: vec![],
             in_insert_statement: false,
-            max_write_size: max_write_size,
+            max_write_size: settings.write,
             eof: false,
         }
     }
@@ -63,45 +73,44 @@ impl Splitter {
         total
     }
 
-    fn pull_collection(&mut self) -> Vec<Token>{
-        let mut collection = self.collection.clone();
+    fn reset_collection(&mut self) -> Vec<Token>{
+        let collection = self.collection.clone();
         self.collection.clear();
         collection
     }
 
     fn state(&mut self) -> SplitterState {
-        let maxed_out = self.total >= self.max_write_size;
-        match (self.eof, maxed_out) {
-            (true, _) => {
+        if self.eof {
+            self.total = 0;
+            return SplitterState::Done(self.reset_collection());
+        }
+
+        match self.total >= self.max_write_size {
+            true => {
                 self.total = 0;
-                SplitterState::Done(self.pull_collection())
-            },
-            (_, true) => {
-                let mut collection = self.pull_collection();
+                let mut collection = self.reset_collection();
                 if self.in_insert_statement {
-                    let len  = collection.len();
+                    let len = collection.len();
                     collection[len - 1] = Token::SemiColon;
                 }
                 
-                self.total = 0;
                 SplitterState::Chunk(collection)
             },
-            _ => {
-                SplitterState::Continue
-            }
+            _ => SplitterState::Continue
         }
     }
 
-    // when starting a new collection
-    // we need to check if we were in pending values
-    // then pre pend last insert statement
-    pub fn process(&mut self, token: Option<TokenStream>) -> SplitterState {
-        // pre-pend last insert statement
-        if self.in_insert_statement && self.collection.len() == 0 {
-            self.collection.extend(self.last_insert.clone());
-        }
-        
-        match token {
+    fn store(&mut self, tokens: Vec<Token>) -> SplitterState {
+        // println!("{:?}", self.total);
+        self.total += self.sum(&tokens);
+        self.collection.extend(tokens);
+        self.state()
+    }
+
+
+    pub fn process(&mut self) -> SplitterState {
+        // pre-pend last insert statement        
+        match self.parser.token_stream() {
             Some(item) => {
                 match item {
                     TokenStream::Insert(tokens) => {
@@ -109,41 +118,38 @@ impl Splitter {
                             Some(Token::Comma) => true,
                             _ => false,
                         };
-
                         // cache insert statement
                         if self.in_insert_statement {
                             self.last_insert = self.copy_insert(&tokens);
                         }
-                        
-                        self.total += self.sum(&tokens);
-                        self.collection.extend(tokens);
-                        self.state()
+
+                        self.store(tokens)
                     },
                     TokenStream::Values(tokens) => {
+                        // when starting a new collection
+                        // we need to check if we were in pending values
+                        // then pre pend last insert statement
                         self.in_insert_statement = match tokens.get(tokens.len() - 1) {
-                            Some(Token::Comma) => true,
-                            _ => false,
+                            Some(Token::SemiColon) => false,
+                            _ => true,
                         };
 
-                        if self.in_insert_statement == false {
+                        if self.in_insert_statement && self.collection.len() == 0 {
+                            let last_insert = self.last_insert.clone();
+                            self.store(last_insert);
+                        }else{
                             self.last_insert = vec![];
                         }
 
-                        self.collection.extend(tokens);
-                        self.state()
+                        self.store(tokens)
+                    },
+                    TokenStream::Block(token) => {
+                        self.store(vec![token])
                     },
                     TokenStream::Ignore(token) => {
-                        match token {
-                            Token::SemiColon => {
-                                self.collection.push(token);
-                                // we can only send finished block
-                                self.state()
-                            },
-                            _ => {
-                                self.collection.push(token);
-                                SplitterState::Continue
-                            }
-                        }
+                        // at this point we cannot send stream for write 
+                        self.store(vec![token]);
+                        SplitterState::Continue
                     }
                 }
             },

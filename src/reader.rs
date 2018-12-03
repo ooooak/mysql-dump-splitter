@@ -89,8 +89,6 @@ impl<T> Reader<T> where
 mod reader_test{
     use std::fs::File;
     use super::Reader;
-    // use std::io::prelude::*;
-    // use std::str;
 
     #[test]
     fn empty_file(){

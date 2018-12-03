@@ -11,12 +11,17 @@ pub enum Token{
     Comment(Vec<u8>),
     InlineComment(Vec<u8>),
     // Any thing that starts with `
-    Identifier(Vec<u8>),  
-    Ignore(u8),
+    Identifier(Vec<u8>),
+
+    // could be /t or /n 
+    LineFeed(u8),
+    Space,
     Comma,
     LP, 
     RP,
     SemiColon,
+    Ignore(u8),
+    Dot
 }
 
 
@@ -44,16 +49,10 @@ impl Token {
             Token::LP => collection.push(b'('),
             Token::RP => collection.push(b')'),
             Token::SemiColon => collection.push(b';'),
+            Token::Dot => collection.push(b'.'),
+            Token::Space => collection.push(b' '),
+            Token::LineFeed(byte) => collection.push(*byte), 
         }        
-    }
-    
-    fn log_bytes(&self, index: &str, bytes: &Vec<u8>){
-        println!("{}: {:?}", index, str::from_utf8(&bytes).unwrap())
-    }
-
-    fn log_byte(&self, index: &str, byte: u8){
-        let vc = vec![byte];
-        self.log_bytes(index, &vc);
     }
 
     pub fn len(&self) -> usize {
@@ -65,6 +64,9 @@ impl Token {
             Token::InlineComment(chunk) |
             Token::Identifier(chunk) => chunk.len(),
 
+            Token::Dot |
+            Token::Space |
+            Token::LineFeed(_) | 
             Token::Ignore(_) |
             Token::LP | 
             Token::RP |
@@ -86,19 +88,33 @@ impl Token {
             Token::LP => self.log_byte("LP", b'('),
             Token::RP => self.log_byte("RP", b')'),
             Token::SemiColon => self.log_byte("SemiColon", b';'),
+            Token::LineFeed(byte) => self.log_byte("SemiColon", byte.clone()),
+            Token::Dot => self.log_byte("SemiColon", b'.'),
+            Token::Space => self.log_byte("SemiColon", b' '),
         }
+    }
+
+    fn log_bytes(&self, index: &str, bytes: &Vec<u8>){
+        println!("{}: {:?}", index, str::from_utf8(&bytes).unwrap())
+    }
+
+    fn log_byte(&self, index: &str, byte: u8){
+        let vc = vec![byte];
+        self.log_bytes(index, &vc);
     }
 }
 
 
 pub struct Tokenizer<T>{
     reader: Reader<T>,
+    line_feed: usize,
 }
 
 impl<T> Tokenizer<T> where T: io::Read {
     pub fn new(reader: Reader<T>) -> Self {
         Self {
             reader: reader,
+            line_feed: 0
         }
     }
 
@@ -129,7 +145,7 @@ impl<T> Tokenizer<T> where T: io::Read {
             let byte = self.reader.peek();
             match byte {
                 Some(item)  => {
-                    match item{
+                    match item {
                         b'a'...b'z' |
                         b'A'...b'Z' => {
                             self.reader.increment_index();
@@ -145,6 +161,21 @@ impl<T> Tokenizer<T> where T: io::Read {
         }
         
         collection
+    }
+
+
+    fn number(&mut self) -> Token{
+        let mut collection = vec![];
+        loop {
+            match self.reader.peek() {
+                Some(byte @ b'0'...b'9') => {
+                    self.reader.increment_index();
+                    collection.push(byte);
+                },
+                _ => break,
+            }
+        }
+        Token::String(collection)
     }
 
     fn read_string(&mut self, closing: u8) -> Token{
@@ -173,60 +204,55 @@ impl<T> Tokenizer<T> where T: io::Read {
         Token::Block(self.read_till(b';'))
     }
 
-    pub fn token(&mut self) -> Option<Token> {
-        let b = self.reader.peek();
-        if b.is_none() {
-            return None
-        }
 
-        let token = match b.unwrap() {
-            closing @ b'"' | 
-            closing @ b'\'' => self.read_string(closing),
-            b'/' => {
-                if self.reader.peek_next() == Some(b'*') {
-                    self.comment()
-                }else{
-                    self.block()
-                }
-            },
-            b'-' => {
-                if self.reader.peek_next() == Some(b'-') {
-                    Token::InlineComment(self.read_till(b'\n'))
-                }else{
-                    Token::Block(self.read_till(b';'))
-                }
-            },
-            b'a'...b'z' | b'A'...b'Z' => {
-                Token::Keyword(self.keyword())
-            },
-            b'`' => {
-                let mut head = vec![self.reader.get().unwrap()];
-                let tail = self.read_till(b'`');
-                head.extend(tail);
-                Token::Identifier(head)
-            },
-            b'(' => {
-                self.reader.increment_index();
-                Token::LP
-            },
-            b')' => {
-                self.reader.increment_index();
-                Token::RP
-            },
-            b';' => {
-                self.reader.increment_index();
-                Token::SemiColon
-            },
-            b',' => {
-                self.reader.increment_index();
-                Token::Comma
-            },            
-            _ => {
-                Token::Ignore(self.reader.get().unwrap())
-            },
-        };
-
+    fn singular(&mut self, token: Token) -> Option<Token> {
+        self.reader.increment_index();
         Some(token)
+    }
+
+    pub fn token(&mut self) -> Option<Token> {
+        match self.reader.peek() {
+            Some(closing @ b'"') | 
+            Some(closing @ b'\'') => {
+                Some(self.read_string(closing))
+            },
+            Some(b'/') => {
+                if self.reader.peek_next() == Some(b'*') {
+                    Some(self.comment())
+                }else{
+                    Some(self.block())
+                }
+            },
+            Some(b'0'...b'9') => Some(self.number()),
+            Some(b'-') => {
+                if self.reader.peek_next() == Some(b'-') {
+                    Some(Token::InlineComment(self.read_till(b'\n')))
+                }else{
+                    Some(Token::Block(self.read_till(b';')))
+                }
+            },
+            Some(b'a'...b'z') | 
+            Some(b'A'...b'Z') => {
+                Some(Token::Keyword(self.keyword()))
+            },
+            Some(byte @ b'`') => {
+                let mut identifier = vec![byte];
+                self.reader.increment_index(); // skip `
+                let tail = self.read_till(b'`');
+                identifier.extend(tail);
+                Some(Token::Identifier(identifier))
+            },
+            Some(b'.') => self.singular(Token::Dot),
+            Some(b'(') => self.singular(Token::LP),
+            Some(b')') => self.singular(Token::RP),
+            // Some(b';') => self.singular(Token::SemiColon),
+            Some(b',') => self.singular(Token::Comma),
+            Some(b' ') => self.singular(Token::Space),
+            Some(_) => {
+                Some(self.block())
+            }
+            None => None,
+        }
     }
 
     fn comment(&mut self) -> Token {
@@ -267,7 +293,7 @@ mod reader_test{
         loop {
             match tk.token() {
                 Some(item) => {
-                    item.log();
+                    println!("{:?}", item);
                 },
                 None => break,
             }

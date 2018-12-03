@@ -19,13 +19,6 @@ pub fn die(text : &str) -> ! {
     process::exit(0);
 }
 
-pub fn dump(tokens: &Vec<Token>) {
-    for token in tokens {
-        token.log()
-    }
-}
-
-    
 pub fn write(file_name: String, tokens: Vec<Token>){
     let mut output = vec![];
     for token in tokens {

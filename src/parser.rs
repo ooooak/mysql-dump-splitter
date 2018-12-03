@@ -1,6 +1,4 @@
-use std::str;
 use helper::die;
-use helper::dump;
 use tokenizer::Tokenizer;
 use tokenizer::Token;
 use std::io;
@@ -12,6 +10,7 @@ use std::io;
 pub enum TokenStream {
     Insert(Vec<Token>),
     Values(Vec<Token>),
+    Block(Token),
     Ignore(Token),
 }
 
@@ -64,13 +63,12 @@ impl<T> Parser<T> where T: io::Read{
                 },
                 Some(token @ _) => {
                     collection.push(token);
-                }
+                },
                 None => {
                     die("Error: Unable to parse values.")
                 },
             }
         }
-
         collection
     }
 
@@ -110,7 +108,14 @@ impl<T> Parser<T> where T: io::Read{
                     output.extend(self.values(token));
                     Some(TokenStream::Values(output))
                 }else{
-                    Some(TokenStream::Ignore(token))
+                    match token {
+                        Token::Block(_) => {
+                            Some(TokenStream::Block(token))
+                        },
+                        _ => {
+                            Some(TokenStream::Ignore(token))
+                        },
+                    }                    
                 }
             },
             None => None,

@@ -12,11 +12,12 @@ use std::str;
 use std::process;
 
 
+
 use helper::write;
-use splitter::Splitter;
+use splitter::SplitterSettings;
 use splitter::SplitterState;
+use splitter::Splitter;
 use parser::Parser;
-// use parser::TokenStream;
 use reader::Reader;
 use tokenizer::Tokenizer;
 
@@ -25,6 +26,8 @@ fn die(text : &str) -> ! {
     process::exit(0);
 }
 
+
+// Unsafe 
 fn get_file() -> File{
     match cli::file_path() {
         Ok(path) => {
@@ -44,16 +47,18 @@ fn get_file() -> File{
 
 fn main() -> Result<()> {
     let file = get_file();
-    let read_buffer: usize = 1 * 1024 * 1024; // 1mb
-    let tokenizer = Tokenizer::new(Reader::new(file, read_buffer));
-    let mut parser = Parser::new(tokenizer);
-    let max_output_buff = 1 * 1024 * 1024; // 1mb
-    let mut splitter = Splitter::new(max_output_buff);
+
+    let mut splitter = Splitter::new(SplitterSettings {
+        read: 1 * 1024 * 1024,
+        write: 1 * 1024 * 1024,
+        file: file,
+    });
 
     let mut chunk_count = 0;
     loop {
-        match splitter.process(parser.token_stream()) {
+        match splitter.process() {
             SplitterState::Chunk(tokens) => {
+                println!("{:?}", tokens.last().unwrap());
                 chunk_count += 1;
                 let file_name = format!("./example-files/output/{:?}.sql", chunk_count);
                 write(file_name, tokens);
@@ -64,7 +69,9 @@ fn main() -> Result<()> {
                 write(file_name, tokens);
                 break
             },
-            SplitterState::Continue => continue,
+            SplitterState::Continue => {
+                continue
+            },
         }
     }
 
