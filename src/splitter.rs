@@ -13,10 +13,8 @@ pub struct SplitterSettings<T>{
     pub file: T,
 }
 
-// #[derive(Debug)]
 pub struct Splitter<T>{
     parser: Parser<T>,
-    in_insert_statement: bool,
     collection: Vec<Token>,
     total: usize,
     max_write_size:usize,
@@ -44,7 +42,6 @@ impl<T> Splitter<T> where T: io::Read {
             total: 0,
             collection: vec![],
             last_insert: vec![],
-            in_insert_statement: false,
             max_write_size: settings.write,
             eof: false,
         }

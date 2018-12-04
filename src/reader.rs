@@ -2,14 +2,11 @@ use std::io::{BufReader};
 use std::io::prelude::*;
 use std::io;
 
-
-
 pub struct Reader<T>{
     buffer: Vec<u8>,
     index: usize,
     reader: BufReader<T>,
     bytes_read: usize,
-    buffer_size: usize,
 }
 
 impl<T> Reader<T> where 
@@ -21,7 +18,6 @@ impl<T> Reader<T> where
             reader: BufReader::new(file),
             index: 0,
             bytes_read: 0,
-            buffer_size: buffer_size,
         };
 
         reader.read_buf();

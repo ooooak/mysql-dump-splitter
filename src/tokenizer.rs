@@ -72,6 +72,7 @@ impl Token {
         }
     }
 
+    #[allow(dead_code)]
     pub fn log(&self) {
         match self {
             Token::String(chunk) => self.log_bytes("String",  chunk),
@@ -94,6 +95,7 @@ impl Token {
         println!("{}: {:?}", index, str::from_utf8(&bytes).unwrap())
     }
 
+    #[allow(dead_code)]
     fn log_byte(&self, index: &str, byte: u8){
         let vc = vec![byte];
         self.log_bytes(index, &vc);
@@ -103,14 +105,12 @@ impl Token {
 
 pub struct Tokenizer<T>{
     reader: Reader<T>,
-    line_feed: usize,
 }
 
 impl<T> Tokenizer<T> where T: io::Read {
     pub fn new(reader: Reader<T>) -> Self {
         Self {
             reader: reader,
-            line_feed: 0
         }
     }
 

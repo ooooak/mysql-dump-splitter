@@ -1,0 +1,20 @@
+name: sql-split
+version: "0.1"
+author: Akshay <akshay.deep0@gmail.com>
+about: sql-split is a command line tool to split large sql dump file into small files. its designed to handle large files without eating the whole ram.
+args:
+    - INPUT:
+        help: SQL Dump file
+        required: true
+        index: 1
+    - OUTPUT_SIZE:
+        long: output
+        value_name: 2m
+        help: Sets custom output size
+        takes_value: true
+        required: true
+    # - OUTPUT_SIZE_TYPE:
+    #     long: output-size-type
+    #     value_name: default=mb
+    #     help: Sets a custom config file
+    #     takes_value: true
