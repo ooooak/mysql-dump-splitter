@@ -7,7 +7,7 @@ Usage
 ----------
 
 ```bash
-$ sql-split.exe libgen_dbbackup-last\backup_libgen.sql --output=20mb
+$ sql-split.exe file.sql --output=20mb
 ```
 
 TODO:
