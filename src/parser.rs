@@ -9,7 +9,7 @@ use std::io;
  */ 
 pub enum TokenStream {
     Insert(Vec<Token>),
-    Values(Vec<Token>),
+    ValuesTuple(Vec<Token>),
     Block(Vec<Token>),
     Comment(Token),
     SpaceOrLineFeed(Token),
@@ -46,8 +46,8 @@ impl<T> Parser<T> where T: io::Read{
         collection
     }
 
-    pub fn values(&mut self, head:Token) -> Vec<Token> {
-        let mut collection = vec![head];
+    pub fn values(&mut self) -> Vec<Token> {
+        let mut collection = vec![];
         loop {
             match self.tokenizer.token() {
                 Some(token @ Token::LP) => {
@@ -73,10 +73,36 @@ impl<T> Parser<T> where T: io::Read{
         collection
     }
 
+    pub fn values_tuple(&mut self) -> Vec<Token> {
+        let mut collection = vec![];
+        collection.extend(self.read_while(Token::RP));
+
+        loop {
+            match self.tokenizer.token() {                    
+                Some(token @ Token::Comma) => {
+                    collection.push(token);
+                    break;
+                },
+                Some(token @ Token::SemiColon) => {
+                    collection.push(token);
+                    break;
+                },
+                Some(token @ _) => {
+                    collection.push(token);
+                },
+                None => {
+                    die("Error: Unable to parse values.")
+                },
+            }
+        }
+
+        collection
+    }
+
 
     /**  
      * Case one: insert into `x` values (1, 4);
-     * Case two: insert into x (id, price) values (1, 4);
+     * Case two: insert into x (id, price) values (1, 4), ();
      **/
     fn insert(&mut self, head:Token) -> Vec<Token> {
         let mut collection = vec![head];
@@ -84,7 +110,8 @@ impl<T> Parser<T> where T: io::Read{
             match self.tokenizer.token() {
                 Some(token) => {
                     if token.keyword("values") {
-                        collection.extend(self.values(token));
+                        collection.push(token);
+                        collection.extend(self.values());
                         break;
                     }else{
                         collection.push(token);
@@ -110,13 +137,6 @@ impl<T> Parser<T> where T: io::Read{
      *   TokenStream::Insert("insert into xyz values (),")
      *   TokenStream::Insert("insert into xyz values ();")
      * 
-     *  #TokenStream::Values
-     *   Value is only create when we are in insert statement with multiple values.
-     *    
-     *   values can end with , or ;
-     *   we might have white space at start
-     *   TokenStream::Insert(" values (),")
-     *   TokenStream::Insert("  values ();")
      * 
      *  #Token::Block
      *   Blocks is anything that ends with ;
@@ -134,21 +154,21 @@ impl<T> Parser<T> where T: io::Read{
                             // parse insert statement
                             output.extend(self.insert(token));
                             Some(TokenStream::Insert(output))
-                        }else if token.keyword("values") {
-                            // parse values statement
-                            output.extend(self.values(token));
-                            Some(TokenStream::Values(output))
                         }else{
                             // we parse block, thinks like create table, set x 
                             output.extend(self.read_while(Token::SemiColon));
                             Some(TokenStream::Block(output))
                         }
                     },
+                    Token::LP => {
+                        let mut output = vec![Token::LP];
+                        output.extend(self.values_tuple());
+                        Some(TokenStream::ValuesTuple(output))
+                    }
                     Token::Comment(_) | 
                     Token::InlineComment(_) => {
                         Some(TokenStream::Comment(token))
                     },
-                    Token::LP |
                     Token::RP |
                     Token::Dot |
                     Token::String(_) |

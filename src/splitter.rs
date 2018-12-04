@@ -51,17 +51,19 @@ impl<T> Splitter<T> where T: io::Read {
     }
 
     /**
-     * TokenStream::Insert contains values too. 
-     * we only need insert statement to pre pend before creating new file. 
+     * Copy insert statement till VALUES
+     * push extra white space after values
      * */ 
-    fn copy_insert(&self, tokens: &Vec<Token>) -> Vec<Token> {
+    fn copy_insert_statement(&self, tokens: &Vec<Token>) -> Vec<Token> {
         let mut ret = vec![];
         for token in tokens {
+            ret.push(token.clone());
             if token.keyword("values") {
                 break;
             }
-            ret.push(token.clone());
         }
+
+        ret.push(Token::Space);
         ret
     }
 
@@ -80,31 +82,26 @@ impl<T> Splitter<T> where T: io::Read {
     }
 
     fn state(&mut self) -> SplitterState {
-        if self.eof {
+        if self.eof || self.reached_limit() {
             self.total = 0;
-            return SplitterState::Done(self.reset_collection());
-        }
-
-        match self.total >= self.max_write_size {
-            true => {
-                self.total = 0;
-                let mut collection = self.reset_collection();
-                if self.in_insert_statement {
-                    let len = collection.len();
-                    collection[len - 1] = Token::SemiColon;
-                }
-                
-                SplitterState::Chunk(collection)
-            },
-            _ => SplitterState::Continue
+            if self.eof {
+                SplitterState::Done(self.reset_collection())
+            }else{
+                SplitterState::Chunk(self.reset_collection())
+            }
+        }else{
+            SplitterState::Continue
         }
     }
 
-    fn store(&mut self, tokens: Vec<Token>) -> SplitterState {
+    fn reached_limit(&self) -> bool{
+        self.total >= self.max_write_size
+    }
+
+    fn store(&mut self, tokens: Vec<Token>) {
         // println!("{:?}", self.total);
         self.total += self.sum(&tokens);
         self.collection.extend(tokens);
-        self.state()
     }
 
 
@@ -114,40 +111,41 @@ impl<T> Splitter<T> where T: io::Read {
             Some(item) => {
                 match item {
                     TokenStream::Insert(tokens) => {
-                        self.in_insert_statement = match tokens.get(tokens.len() - 1) {
-                            Some(Token::Comma) => true,
-                            _ => false,
-                        };
-                        // cache insert statement
-                        if self.in_insert_statement {
-                            self.last_insert = self.copy_insert(&tokens);
-                        }
-
-                        self.store(tokens)
+                        self.last_insert = self.copy_insert_statement(&tokens);
+                        self.store(tokens);
+                        self.state()
                     },
-                    TokenStream::Values(tokens) => {
-                        // when starting a new collection
-                        // we need to check if we are in insert
-                        self.in_insert_statement = match tokens.get(tokens.len() - 1) {
-                            Some(Token::SemiColon) => false,
-                            _ => true,
-                        };
+                    TokenStream::ValuesTuple(mut tokens) => {
+                        // we have tuple with some values 
+                        // we are in insert
+                        // we have to close insert if we get ;
 
-                        if self.in_insert_statement && self.collection.len() == 0 {
-                            let last_insert = self.last_insert.clone();
-                            self.store(last_insert);
-                        }else{
-                            self.last_insert = vec![];
+                        if self.collection.len() == 0 {
+                            // starting with fresh collection
+                            // push last insert statement
+                            let insert_stm = self.last_insert.clone();
+                            self.store(insert_stm);
                         }
 
-                        self.store(tokens)
+                        self.store(tokens);
+
+                        // we maxed out in value tuple 
+                        // lets close that
+                        if self.reached_limit() {
+                            let len = self.collection.len();
+                            self.collection[len - 1] = Token::SemiColon;
+                        }
+
+                        self.state()
                     },
                     TokenStream::Block(tokens) => {
-                        self.store(tokens)
+                        self.store(tokens);
+                        self.state()
                     },
                     TokenStream::Comment(token) |
                     TokenStream::SpaceOrLineFeed(token) => {
-                        self.store(vec![token])
+                        self.store(vec![token]);
+                        self.state()
                     }
                 }
             },
