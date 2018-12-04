@@ -104,8 +104,8 @@ impl<T> Parser<T> where T: io::Read{
      * Case one: insert into `x` values (1, 4);
      * Case two: insert into x (id, price) values (1, 4), ();
      **/
-    fn insert(&mut self, head:Token) -> Vec<Token> {
-        let mut collection = vec![head];
+    fn insert(&mut self) -> Vec<Token> {
+        let mut collection = vec![];
         loop {
             match self.tokenizer.token() {
                 Some(token) => {
@@ -144,18 +144,21 @@ impl<T> Parser<T> where T: io::Read{
      * */
     pub fn token_stream(&mut self) -> Option<TokenStream> {
         let t = self.tokenizer.token();
-        t.clone().unwrap().log();
+        // t.clone().unwrap().log();
         match t {
             Some(token) => {
                 match token {
                     Token::Keyword(_) => {
                         let mut output = vec![];
+                        
                         if token.keyword("insert") {
                             // parse insert statement
-                            output.extend(self.insert(token));
+                            output.push(token);
+                            output.extend(self.insert());
                             Some(TokenStream::Insert(output))
                         }else{
-                            // we parse block, thinks like create table, set x 
+                            // we parse block, thinks like create table, set x
+                            output.push(token);
                             output.extend(self.read_while(Token::SemiColon));
                             Some(TokenStream::Block(output))
                         }
@@ -175,7 +178,6 @@ impl<T> Parser<T> where T: io::Read{
                     Token::Identifier(_) |
                     Token::Comma |
                     Token::Ignore(_) => {
-                        token.log();
                         die("We cannot start with following set of tokens.")
                     },
 

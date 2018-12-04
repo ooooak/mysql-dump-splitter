@@ -49,8 +49,8 @@ fn main() -> Result<()> {
     let file = get_file();
 
     let mut splitter = Splitter::new(SplitterSettings {
-        read: 1 * 1024 * 1024,
-        write: 1 * 1024 * 1024,
+        read: 10 * 1024 * 1024,
+        write: 50 * 1024 * 1024,
         file: file,
     });
 
@@ -58,7 +58,6 @@ fn main() -> Result<()> {
     loop {
         match splitter.process() {
             SplitterState::Chunk(tokens) => {
-                println!("{:?}", tokens.last().unwrap());
                 chunk_count += 1;
                 let file_name = format!("./example-files/output/{:?}.sql", chunk_count);
                 write(file_name, tokens);
