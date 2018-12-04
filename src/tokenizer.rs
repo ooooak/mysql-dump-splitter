@@ -7,13 +7,12 @@ use helper::die;
 pub enum Token{
     String(Vec<u8>),
     Keyword(Vec<u8>),
-    Block(Vec<u8>),
     Comment(Vec<u8>),
     InlineComment(Vec<u8>),
     // Any thing that starts with `
     Identifier(Vec<u8>),
 
-    // could be /t or /n 
+    // could be /t or /n /r
     LineFeed(u8),
     Space,
     Comma,
@@ -21,7 +20,7 @@ pub enum Token{
     RP,
     SemiColon,
     Ignore(u8),
-    Dot
+    Dot,
 }
 
 
@@ -40,7 +39,6 @@ impl Token {
         match self {
             Token::String(chunk) => collection.extend(chunk),
             Token::Keyword(chunk) => collection.extend(chunk),
-            Token::Block(chunk) => collection.extend(chunk),
             Token::Comment(chunk) => collection.extend(chunk),
             Token::InlineComment(chunk) => collection.extend(chunk),
             Token::Identifier(chunk) => collection.extend(chunk),
@@ -58,7 +56,6 @@ impl Token {
     pub fn len(&self) -> usize {
         match self {
             Token::Keyword(chunk) | 
-            Token::Block(chunk) | 
             Token::Comment(chunk) |
             Token::String(chunk) |
             Token::InlineComment(chunk) |
@@ -79,7 +76,6 @@ impl Token {
         match self {
             Token::String(chunk) => self.log_bytes("String",  chunk),
             Token::Keyword(chunk) => self.log_bytes("Keyword",  chunk),
-            Token::Block(chunk) => self.log_bytes("Block",  chunk),
             Token::Comment(chunk) => self.log_bytes("Comment",  chunk),
             Token::InlineComment(chunk) => self.log_bytes("InlineComment",  chunk),
             Token::Identifier(chunk) => self.log_bytes("Identifier",  chunk),
@@ -200,11 +196,6 @@ impl<T> Tokenizer<T> where T: io::Read {
         Token::String(collection)
     }
 
-    fn block(&mut self) -> Token{
-        Token::Block(self.read_till(b';'))
-    }
-
-
     fn singular(&mut self, token: Token) -> Option<Token> {
         self.reader.increment_index();
         Some(token)
@@ -212,29 +203,29 @@ impl<T> Tokenizer<T> where T: io::Read {
 
     pub fn token(&mut self) -> Option<Token> {
         match self.reader.peek() {
-            Some(closing @ b'"') | 
+            Some(closing @ b'"') |
             Some(closing @ b'\'') => {
                 Some(self.read_string(closing))
             },
-            Some(b'/') => {
+            Some(byte @ b'/') => {
                 if self.reader.peek_next() == Some(b'*') {
                     Some(self.comment())
                 }else{
-                    Some(self.block())
+                    self.reader.increment_index();
+                    Some(Token::Ignore(byte ))
                 }
             },
             Some(b'0'...b'9') => Some(self.number()),
-            Some(b'-') => {
+            Some(byte @ b'-') => {
                 if self.reader.peek_next() == Some(b'-') {
                     Some(Token::InlineComment(self.read_till(b'\n')))
                 }else{
-                    Some(Token::Block(self.read_till(b';')))
+                    self.reader.increment_index();
+                    Some(Token::Ignore(byte))
                 }
             },
             Some(b'a'...b'z') | 
-            Some(b'A'...b'Z') => {
-                Some(Token::Keyword(self.keyword()))
-            },
+            Some(b'A'...b'Z') => Some(Token::Keyword(self.keyword())),
             Some(byte @ b'`') => {
                 let mut identifier = vec![byte];
                 self.reader.increment_index(); // skip `
@@ -245,12 +236,13 @@ impl<T> Tokenizer<T> where T: io::Read {
             Some(b'.') => self.singular(Token::Dot),
             Some(b'(') => self.singular(Token::LP),
             Some(b')') => self.singular(Token::RP),
-            // Some(b';') => self.singular(Token::SemiColon),
+            Some(b';') => self.singular(Token::SemiColon),
             Some(b',') => self.singular(Token::Comma),
             Some(b' ') => self.singular(Token::Space),
-            Some(_) => {
-                Some(self.block())
-            }
+            Some(byte @ b'\r') |  
+            Some(byte @ b'\t') | 
+            Some(byte @ b'\n') => self.singular(Token::LineFeed(byte)),
+            Some(byte) => self.singular(Token::Ignore(byte)),
             None => None,
         }
     }
@@ -272,7 +264,6 @@ impl<T> Tokenizer<T> where T: io::Read {
                 break
             }
         }
-
         return Token::Comment(collection)
     }
 }

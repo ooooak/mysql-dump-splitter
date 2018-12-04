@@ -127,8 +127,7 @@ impl<T> Splitter<T> where T: io::Read {
                     },
                     TokenStream::Values(tokens) => {
                         // when starting a new collection
-                        // we need to check if we were in pending values
-                        // then pre pend last insert statement
+                        // we need to check if we are in insert
                         self.in_insert_statement = match tokens.get(tokens.len() - 1) {
                             Some(Token::SemiColon) => false,
                             _ => true,
@@ -143,13 +142,12 @@ impl<T> Splitter<T> where T: io::Read {
 
                         self.store(tokens)
                     },
-                    TokenStream::Block(token) => {
-                        self.store(vec![token])
+                    TokenStream::Block(tokens) => {
+                        self.store(tokens)
                     },
-                    TokenStream::Ignore(token) => {
-                        // at this point we cannot send stream for write 
-                        self.store(vec![token]);
-                        SplitterState::Continue
+                    TokenStream::Comment(token) |
+                    TokenStream::SpaceOrLineFeed(token) => {
+                        self.store(vec![token])
                     }
                 }
             },

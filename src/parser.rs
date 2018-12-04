@@ -4,14 +4,15 @@ use tokenizer::Token;
 use std::io;
 
 /**
- * As long as we are not doing anything crazy with
- * ast we are going to keep it as list of tokens.
+ * We can only send tokens that can be written down to file
+ * with little modification
  */ 
 pub enum TokenStream {
     Insert(Vec<Token>),
     Values(Vec<Token>),
-    Block(Token),
-    Ignore(Token),
+    Block(Vec<Token>),
+    Comment(Token),
+    SpaceOrLineFeed(Token),
 }
 
 pub struct Parser<T> {
@@ -97,25 +98,73 @@ impl<T> Parser<T> where T: io::Read{
         collection
     }
     
+    /**
+     * We only send streams that we can write with little modification
+     * 
+     *  #TokenStream::Insert 
+     *   We are sending insert statement with first value.
+     *   reason to do that is we only want to send stream that we can write to
+     *   file with less modifications 
+     *   
+     *   insert can end with , or ;
+     *   TokenStream::Insert("insert into xyz values (),")
+     *   TokenStream::Insert("insert into xyz values ();")
+     * 
+     *  #TokenStream::Values
+     *   Value is only create when we are in insert statement with multiple values.
+     *    
+     *   values can end with , or ;
+     *   we might have white space at start
+     *   TokenStream::Insert(" values (),")
+     *   TokenStream::Insert("  values ();")
+     * 
+     *  #Token::Block
+     *   Blocks is anything that ends with ;
+     *   create sta
+     * */
     pub fn token_stream(&mut self) -> Option<TokenStream> {
-        match self.tokenizer.token() {
+        let t = self.tokenizer.token();
+        t.clone().unwrap().log();
+        match t {
             Some(token) => {
-                let mut output = vec![];
-                if token.keyword("insert") {
-                    output.extend(self.insert(token));
-                    Some(TokenStream::Insert(output))
-                }else if token.keyword("values") {
-                    output.extend(self.values(token));
-                    Some(TokenStream::Values(output))
-                }else{
-                    match token {
-                        Token::Block(_) => {
-                            Some(TokenStream::Block(token))
-                        },
-                        _ => {
-                            Some(TokenStream::Ignore(token))
-                        },
-                    }                    
+                match token {
+                    Token::Keyword(_) => {
+                        let mut output = vec![];
+                        if token.keyword("insert") {
+                            // parse insert statement
+                            output.extend(self.insert(token));
+                            Some(TokenStream::Insert(output))
+                        }else if token.keyword("values") {
+                            // parse values statement
+                            output.extend(self.values(token));
+                            Some(TokenStream::Values(output))
+                        }else{
+                            // we parse block, thinks like create table, set x 
+                            output.extend(self.read_while(Token::SemiColon));
+                            Some(TokenStream::Block(output))
+                        }
+                    },
+                    Token::Comment(_) | 
+                    Token::InlineComment(_) => {
+                        Some(TokenStream::Comment(token))
+                    },
+                    Token::LP |
+                    Token::RP |
+                    Token::Dot |
+                    Token::String(_) |
+                    Token::Identifier(_) |
+                    Token::Comma |
+                    Token::Ignore(_) => {
+                        token.log();
+                        die("We cannot start with following set of tokens.")
+                    },
+
+                    // SemiColon can be treated as white space
+                    Token::SemiColon |
+                    Token::Space |
+                    Token::LineFeed(_) =>{
+                        Some(TokenStream::SpaceOrLineFeed(token))
+                    }
                 }
             },
             None => None,
