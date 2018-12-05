@@ -42,6 +42,9 @@ fn main() -> Result<()> {
     let mut file_count = 0;
     loop {
         match splitter.process() {
+            SplitterState::SyntaxErr(e) => {
+                log_error(e.text)
+            },
             SplitterState::Chunk(tokens) => {
                 file_count += 1;
                 let file_name = format!("./{:?}.sql", file_count);

@@ -1,14 +1,6 @@
-use std::process;
 use tokenizer::Token;
 use std::fs::File;
 use std::io::prelude::*;
-
-
-
-pub fn die(text : &str) -> ! {
-    println!("{}", text);
-    process::exit(0);
-}
 
 pub fn write(file_name: String, tokens: Vec<Token>){
     let mut output = vec![];

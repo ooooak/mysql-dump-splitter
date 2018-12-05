@@ -1,7 +1,6 @@
 use std::str;
 use reader::Reader;
 use std::io;
-use helper::die;
 
 #[derive(Debug,PartialEq,Clone)]
 pub enum Token{
@@ -22,7 +21,6 @@ pub enum Token{
     Ignore(u8),
     Dot,
 }
-
 
 impl Token {
     pub fn keyword(&self, string: &str) -> bool {
@@ -105,16 +103,23 @@ impl Token {
 
 pub struct Tokenizer<T>{
     reader: Reader<T>,
+    // line_num: usize,
+}
+
+pub struct SyntaxErr{
+    // line_num: usize,
+    pub text: &'static str
 }
 
 impl<T> Tokenizer<T> where T: io::Read {
     pub fn new(reader: Reader<T>) -> Self {
         Self {
             reader: reader,
+            // line_num: 0
         }
     }
 
-    fn read_till(&mut self, item: u8) -> Vec<u8> {
+    fn read_till(&mut self, item: u8) -> Result<Vec<u8>, SyntaxErr> {
         let mut collection = vec![];
 
         loop {
@@ -127,15 +132,17 @@ impl<T> Tokenizer<T> where T: io::Read {
                     }
                 },
                 None => {
-                    die("Error: Unexpected end of the file.");
+                    return Err(SyntaxErr{
+                        text: "Unexpected end of the file."
+                    })
                 }
             }
         }
         
-        collection
+        Ok(collection)
     }
 
-    fn keyword(&mut self) -> Vec<u8> {
+    fn keyword(&mut self) -> Result<Vec<u8>, SyntaxErr> {
         let mut collection = vec![];
         loop {
             let byte = self.reader.peek();
@@ -151,16 +158,18 @@ impl<T> Tokenizer<T> where T: io::Read {
                     }
                 },
                 None => {
-                    die("Error: While parsing keyword.");
+                    return Err(SyntaxErr{
+                        text:"While parsing keyword."
+                    })
                 }
             }
         }
         
-        collection
+        Ok(collection)
     }
 
 
-    fn number(&mut self) -> Token{
+    fn number(&mut self) -> Token {
         let mut collection = vec![];
         loop {
             match self.reader.peek() {
@@ -174,7 +183,7 @@ impl<T> Tokenizer<T> where T: io::Read {
         Token::String(collection)
     }
 
-    fn read_string(&mut self, closing: u8) -> Token{
+    fn read_string(&mut self, closing: u8) -> Result<Token, SyntaxErr> {
         let mut collection = vec![];
         let mut last_byte = self.reader.get().unwrap();
         collection.push(last_byte);
@@ -184,54 +193,79 @@ impl<T> Tokenizer<T> where T: io::Read {
             if let Some(item) = byte {
                 collection.push(item);
                 if item == closing && last_byte != b'\\' {
-                    // none escaped string 
                     break;
                 }
                 last_byte = item;
             }else{
-                die("Error: Unclosed string.")
+                return Err(SyntaxErr{
+                    text: "Unclosed string."
+                })
             }
         }
 
-        Token::String(collection)
+        Ok(Token::String(collection))
     }
 
-    fn singular(&mut self, token: Token) -> Option<Token> {
+    fn singular(&mut self, token: Token) -> Result<Option<Token>, SyntaxErr> {
         self.reader.increment_index();
-        Some(token)
+        Ok(Some(token))
     }
 
-    pub fn token(&mut self) -> Option<Token> {
+    pub fn token(&mut self) -> Result<Option<Token>, SyntaxErr> {
         match self.reader.peek() {
             Some(closing @ b'"') |
             Some(closing @ b'\'') => {
-                Some(self.read_string(closing))
+                match self.read_string(closing) {
+                    Ok(value) => {
+                        Ok(Some(value))
+                    },
+                    Err(err) => {
+                        Err(err)
+                    },
+                }
             },
             Some(byte @ b'/') => {
                 if self.reader.peek_next() == Some(b'*') {
-                    Some(self.comment())
+                    self.comment()
                 }else{
                     self.reader.increment_index();
-                    Some(Token::Ignore(byte ))
+                    Ok(Some(Token::Ignore(byte)))
                 }
             },
-            Some(b'0'...b'9') => Some(self.number()),
+            Some(b'0'...b'9') => Ok(Some(self.number())),
             Some(byte @ b'-') => {
                 if self.reader.peek_next() == Some(b'-') {
-                    Some(Token::InlineComment(self.read_till(b'\n')))
+                    match self.read_till(b'\n') {
+                        Ok(item) => {
+                            Ok(Some(Token::InlineComment(item)))
+                        },
+                        Err(err) => Err(err),
+                    }
+                    
                 }else{
                     self.reader.increment_index();
-                    Some(Token::Ignore(byte))
+                    Ok(Some(Token::Ignore(byte)))
                 }
             },
             Some(b'a'...b'z') | 
-            Some(b'A'...b'Z') => Some(Token::Keyword(self.keyword())),
+            Some(b'A'...b'Z') => {
+                match self.keyword() {
+                    Ok(value) => {
+                        Ok(Some(Token::Keyword(value)))
+                    },
+                    Err(e) => Err(e),
+                }                
+            },
             Some(byte @ b'`') => {
-                let mut identifier = vec![byte];
                 self.reader.increment_index(); // skip `
-                let tail = self.read_till(b'`');
-                identifier.extend(tail);
-                Some(Token::Identifier(identifier))
+                match self.read_till(b'`') {
+                    Ok(value) => {
+                        let mut identifier = vec![byte];
+                        identifier.extend(value);
+                        Ok(Some(Token::Identifier(identifier)))
+                    },
+                    Err(err) => Err(err),
+                }
             },
             Some(b'.') => self.singular(Token::Dot),
             Some(b'(') => self.singular(Token::LP),
@@ -243,52 +277,52 @@ impl<T> Tokenizer<T> where T: io::Read {
             Some(byte @ b'\t') | 
             Some(byte @ b'\n') => self.singular(Token::LineFeed(byte)),
             Some(byte) => self.singular(Token::Ignore(byte)),
-            None => None,
+            None => Ok(None),
         }
     }
 
-    fn comment(&mut self) -> Token {
+    fn comment(&mut self) -> Result<Option<Token>, SyntaxErr> {
         let mut collection = vec![];
         loop {
             let cr = self.reader.get();
             // eof
             if cr.is_none() {
-                die("Error: Incomplete multi line comment .")
+                return Err(SyntaxErr{
+                    text: "Incomplete multi-line comment."
+                });
             }
-
+            
             collection.push(cr.unwrap());
-            // end of the comment 
             if cr == Some(b'*') && self.reader.peek() == Some(b'/') {
                 let get_peeked = self.reader.get();
                 collection.push(get_peeked.unwrap());
                 break
             }
         }
-        return Token::Comment(collection)
+        return Ok(Some(Token::Comment(collection)))
     }
 }
 
 
 #[cfg(test)]
 mod reader_test{
-    use std::fs::File;
-    use Reader;
-    use super::Tokenizer;
+    // use std::fs::File;
+    // use Reader;
+    // use super::Tokenizer;
 
-    #[test]
-    fn tokenizer(){
-        let read_buffer: usize = 1 * 1024 * 1024; // 1mb 
-        let file = File::open("./example-files/create-table-with-comments.txt").unwrap();
-        let reader = Reader::new(file, read_buffer);
-        let mut tk = Tokenizer::new(reader);
-        loop {
-            match tk.token() {
-                Some(item) => {
-                    println!("{:?}", item);
-                },
-                None => break,
-            }
-        }
-    }
-
+    // #[test]
+    // fn tokenizer(){
+    //     let read_buffer: usize = 1 * 1024 * 1024; // 1mb 
+    //     let file = File::open("./example-files/create-table-with-comments.txt").unwrap();
+    //     let reader = Reader::new(file, read_buffer);
+    //     let mut tk = Tokenizer::new(reader);
+    //     loop {
+    //         match tk.token() {
+    //             Some(item) => {
+    //                 println!("{:?}", item);
+    //             },
+    //             None => break,
+    //         }
+    //     }
+    // }
 }

@@ -2,6 +2,7 @@ use parser::TokenStream;
 use parser::Parser;
 use tokenizer::Token;
 use tokenizer::Tokenizer;
+use tokenizer::SyntaxErr;
 use reader::Reader;
 use std::io;
 
@@ -23,6 +24,7 @@ pub struct Splitter<T>{
 }
 
 pub enum SplitterState{
+    SyntaxErr(SyntaxErr),
     // Reached output limit. send the chunk
     Chunk(Vec<Token>),
     // reached the EOF.
@@ -96,16 +98,14 @@ impl<T> Splitter<T> where T: io::Read {
     }
 
     fn store(&mut self, tokens: Vec<Token>) {
-        // println!("{:?}", self.total);
         self.total += self.sum(&tokens);
         self.collection.extend(tokens);
     }
 
 
     pub fn process(&mut self) -> SplitterState {
-        // pre-pend last insert statement        
         match self.parser.token_stream() {
-            Some(item) => {
+            Ok(Some(item)) => {
                 match item {
                     TokenStream::Insert(tokens) => {
                         self.last_insert = self.copy_insert_statement(&tokens);
@@ -113,10 +113,6 @@ impl<T> Splitter<T> where T: io::Read {
                         self.state()
                     },
                     TokenStream::ValuesTuple(mut tokens) => {
-                        // we have tuple with some values 
-                        // we are in insert
-                        // we have to close insert if we get ;
-
                         if self.collection.len() == 0 {
                             // starting with fresh collection
                             // push last insert statement
@@ -126,9 +122,10 @@ impl<T> Splitter<T> where T: io::Read {
 
                         self.store(tokens);
 
-                        // we maxed out in value tuple 
-                        // lets close that
+                        
                         if self.reached_limit() {
+                            // maxed out in value tuple 
+                            // close statement
                             let len = self.collection.len();
                             self.collection[len - 1] = Token::SemiColon;
                         }
@@ -146,10 +143,11 @@ impl<T> Splitter<T> where T: io::Read {
                     }
                 }
             },
-            None => {
+            Ok(None) => {
                 self.eof = true;
                 self.state()
             },
+            Err(e) => SplitterState::SyntaxErr(e),
         }
     }
 }

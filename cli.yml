@@ -9,12 +9,7 @@ args:
         index: 1
     - OUTPUT_SIZE:
         long: output
-        value_name: 2m
+        value_name: 2mb
         help: Sets custom output size
         takes_value: true
         required: true
-    # - OUTPUT_SIZE_TYPE:
-    #     long: output-size-type
-    #     value_name: default=mb
-    #     help: Sets a custom config file
-    #     takes_value: true
