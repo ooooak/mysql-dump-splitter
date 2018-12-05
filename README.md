@@ -16,6 +16,3 @@ TODO:
 3. fix unsafe code. remove die
 4. better error reporting
 5. add multi threading
-
-Maybe:
-1. add support for writing large files like 10gb. as of now if we have 6gb ram and we want to output 10gb file it will not work.
