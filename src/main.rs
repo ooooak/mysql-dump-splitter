@@ -1,14 +1,15 @@
-#[macro_use] extern crate clap;
-
+#[macro_use] 
+extern crate clap;
 mod parser;
 mod splitter;
 mod reader;
 mod cli;
 mod tokenizer;
-mod helper;
 
 use std::str;
-use std::process;use helper::write;
+use std::process;
+use std::fs::File;
+use std::io::prelude::*;
 use splitter::SplitterSettings;
 use splitter::SplitterState;
 use splitter::Splitter;
@@ -16,6 +17,11 @@ use splitter::Splitter;
 fn log_error(err: &str) -> ! {
     eprintln!("{}", err);
     process::exit(0)
+}
+
+fn create_file(name: usize) -> File {
+    let file_name = format!("./{:?}.sql", name);
+    File::create(file_name).unwrap()
 }
 
 
@@ -38,26 +44,21 @@ fn main(){
         file: file,
     });
 
-    let mut file_count = 0;
+    let mut file_count = 1;
+    let mut buffer = create_file(file_count);
+
     loop {
         match splitter.process() {
-            SplitterState::SyntaxErr(e) => {
-                log_error(e.text)
+            SplitterState::Chunk(file_state, tokens) => {
+                if *file_state == splitter::FileState::New {
+                    file_count += 1;
+                    buffer = create_file(file_count);                    
+                }
+
+                buffer.write_all(&tokens).unwrap();
             },
-            SplitterState::Chunk(tokens) => {
-                file_count += 1;
-                let file_name = format!("./{:?}.sql", file_count);
-                write(file_name, tokens);
-            },
-            SplitterState::Done(tokens) => {
-                file_count += 1;
-                let file_name = format!("./{:?}.sql", file_count);
-                write(file_name, tokens);
-                break
-            },
-            SplitterState::Continue => {
-                continue
-            },
+            SplitterState::SyntaxErr(e) => log_error(e.text),
+            SplitterState::Done => break,
         }
     }
 }

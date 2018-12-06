@@ -8,11 +8,8 @@ pub enum Token{
     Keyword(Vec<u8>),
     Comment(Vec<u8>),
     InlineComment(Vec<u8>),
-    // Any thing that starts with `
     Identifier(Vec<u8>),
-
-    // could be /t or /n /r
-    LineFeed(u8),
+    LineFeed(u8), // could be /t or /n /r
     Space,
     Comma,
     LP, 
@@ -33,21 +30,21 @@ impl Token {
         }
     }
 
-    pub fn value(&self, collection: &mut Vec<u8>) {
+    pub fn value(self) -> Vec<u8> {
         match self {
-            Token::String(chunk) => collection.extend(chunk),
-            Token::Keyword(chunk) => collection.extend(chunk),
-            Token::Comment(chunk) => collection.extend(chunk),
-            Token::InlineComment(chunk) => collection.extend(chunk),
-            Token::Identifier(chunk) => collection.extend(chunk),
-            Token::Ignore(byte) => collection.push(*byte),
-            Token::Comma => collection.push(b','),
-            Token::LP => collection.push(b'('),
-            Token::RP => collection.push(b')'),
-            Token::SemiColon => collection.push(b';'),
-            Token::Dot => collection.push(b'.'),
-            Token::Space => collection.push(b' '),
-            Token::LineFeed(byte) => collection.push(*byte), 
+            Token::String(chunk) => chunk,
+            Token::Keyword(chunk) => chunk,
+            Token::Comment(chunk) => chunk,
+            Token::InlineComment(chunk) => chunk,
+            Token::Identifier(chunk) => chunk,
+            Token::Ignore(byte) => vec![byte],
+            Token::Comma => vec![b','],
+            Token::LP => vec![b'('],
+            Token::RP => vec![b')'],
+            Token::SemiColon => vec![b';'],
+            Token::Dot => vec![b'.'],
+            Token::Space => vec![b' '],
+            Token::LineFeed(byte) => vec![byte],
         }        
     }
 

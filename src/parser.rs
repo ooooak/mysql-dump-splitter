@@ -133,7 +133,7 @@ impl<T> Parser<T> where T: io::Read{
                             Ok(val) => {
                                 collection.extend(val);
                             },
-                            Err(e) =>return Err(e),
+                            Err(e) => return Err(e),
                         }
                         break;
                     }else{
@@ -153,9 +153,7 @@ impl<T> Parser<T> where T: io::Read{
     }
 
     pub fn token_stream(&mut self) -> Result<Option<TokenStream>, SyntaxErr> {
-        let t = self.tokenizer.token();
-        // t.clone().unwrap().log();
-        match t {
+        match self.tokenizer.token() {
             Ok(Some(token)) => {
                 match token {
                     Token::Keyword(_) => { 
