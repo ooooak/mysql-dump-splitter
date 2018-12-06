@@ -6,11 +6,11 @@ use std::io;
 
 #[derive(Debug,PartialEq)]
 pub enum TokenStream {
-    Insert(Vec<Token>),
-    ValuesTuple(Vec<Token>),
-    Block(Vec<Token>),
-    Comment(Token),
-    SpaceOrLineFeed(Token),
+    Insert(Vec<u8>),
+    ValuesTuple(Vec<u8>),
+    Block(Vec<u8>),
+    Comment(Vec<u8>),
+    SpaceOrLineFeed(Vec<u8>),
 }
 
 pub struct Parser<T> {
@@ -25,38 +25,35 @@ impl<T> Parser<T> where T: io::Read{
     }
 
    
-    pub fn read_while(&mut self, token: &Token) -> Result<Vec<Token>, SyntaxErr> {
+    pub fn read_while(&mut self, token: &Token) -> Result<Vec<u8>, SyntaxErr> {
         let mut collection = vec![];
         loop {
-            match self.tokenizer.token() {
-                Ok(Some(t)) => {
+            match self.tokenizer.token()? {
+                Some(t) => {
                     if t == *token {
-                        collection.push(t);
+                        collection.extend(t.value());
                         break
                     }else{
-                        collection.push(t);
+                        collection.extend(t.value());
                     }
                 },
-                Ok(None) => {
+                None => {
                     return Err(SyntaxErr{
                         text:"invalid end of file"
                     })
-                },
-                Err(err) => {
-                    return Err(err)
-                },
+                }
             }
         }
 
         Ok(collection)
     }
 
-    pub fn values(&mut self) -> Result<Vec<Token>, SyntaxErr> {
+    pub fn values(&mut self) -> Result<Vec<u8>, SyntaxErr> {
         let mut collection = vec![];
         loop {
-            match self.tokenizer.token() {
-                Ok(Some(token @ Token::LP)) => {
-                    collection.push(token);
+            match self.tokenizer.token()? {
+                Some(token @ Token::LP) => {
+                    collection.extend(token.value());
                     match self.read_while(&Token::RP) {
                         Ok(val) => {
                             collection.extend(val);
@@ -64,88 +61,78 @@ impl<T> Parser<T> where T: io::Read{
                         Err(e) => return Err(e),
                     }                    
                 },
-                Ok(Some(token @ Token::Comma)) => {
-                    collection.push(token);
+                Some(token @ Token::Comma) => {
+                    collection.extend(token.value());
                     break;
                 },
-                Ok(Some(token @ Token::SemiColon)) => {
-                    collection.push(token);
+                Some(token @ Token::SemiColon) => {
+                    collection.extend(token.value());
                     break;
                 },
-                Ok(Some(token)) => {
-                    collection.push(token);
+                Some(token) => {
+                    collection.extend(token.value());
                 },
-                Ok(None) => {
+                None => {
                     return Err(SyntaxErr{
                         text: "Unable to parse values."
                     })
-                },
-                Err(e) => return Err(e),
+                }
             }
         }
 
         Ok(collection)
     }
 
-    pub fn values_tuple(&mut self) -> Result<Vec<Token>, SyntaxErr> {
+    pub fn values_tuple(&mut self) -> Result<Vec<u8>, SyntaxErr> {
         let mut collection = vec![];
-        match self.read_while(&Token::RP) {
-            Ok(val) => {
-                collection.extend(val);
-            },
-            Err(e) => return Err(e),
-        }
+        let value = self.read_while(&Token::RP)?; 
+        collection.extend(value);
         
 
         loop {
-            match self.tokenizer.token() {                    
-                Ok(Some(token @ Token::Comma)) => {
-                    collection.push(token);
+            match self.tokenizer.token()? {                    
+                Some(token @ Token::Comma) => {
+                    collection.extend(token.value());
                     break;
                 },
-                Ok(Some(token @ Token::SemiColon)) => {
-                    collection.push(token);
+                Some(token @ Token::SemiColon) => {
+                    collection.extend(token.value());
                     break;
                 },
-                Ok(Some(token)) => {
-                    collection.push(token);
+                Some(token) => {
+                    collection.extend(token.value());
                 },
-                Ok(None) => {
+                None => {
                     return Err(SyntaxErr{
                         text: "Unable to parse values."
                     })
                 },
-                Err(e) => return Err(e),
             }
         }
 
         Ok(collection)
     }
 
-    fn insert(&mut self) ->  Result<Vec<Token>, SyntaxErr> {
+    fn insert(&mut self) ->  Result<Vec<u8>, SyntaxErr> {
         let mut collection = vec![];
+        let mut insert_st_cp = vec![];
         loop {
-            match self.tokenizer.token() {
-                Ok(Some(token)) => {
+            match self.tokenizer.token()? {
+                Some(token) => {
                     if token.keyword("values") {
-                        collection.push(token);
-                        match self.values() {
-                            Ok(val) => {
-                                collection.extend(val);
-                            },
-                            Err(e) => return Err(e),
-                        }
+                        collection.extend(token.value());
+                        insert_st_cp.extend(collection.clone());
+                        collection.extend(self.values()?);                        
                         break;
                     }else{
-                        collection.push(token);
+                        collection.extend(token.value());
                     }
                 },
-                Ok(None) => {
+                None => {
                     return Err(SyntaxErr{
                         text: "Incomplete Insert statement."
                     })
                 },
-                Err(e) => return Err(e),
             }
         }
 
@@ -153,8 +140,8 @@ impl<T> Parser<T> where T: io::Read{
     }
 
     pub fn token_stream(&mut self) -> Result<Option<TokenStream>, SyntaxErr> {
-        match self.tokenizer.token() {
-            Ok(Some(token)) => {
+        match self.tokenizer.token()? {
+            Some(token) => {
                 match token {
                     Token::Keyword(_) => { 
                         if token.keyword("insert") {
@@ -162,22 +149,16 @@ impl<T> Parser<T> where T: io::Read{
                             // should end with with , or ;
                             // example: "insert into xyz values (),"
                             // example: "insert into xyz values ();"
-                            match self.insert() {
-                                Ok(value) => {
-                                    let mut output = vec![token];
-                                    output.extend(value);
-                                    Ok(Some(TokenStream::Insert(output)))
-                                },
-                                Err(e) => Err(e),
-                            }
+                            let mut output = Vec::from(token.value());
+                            output.extend(self.insert()?);
+                            Ok(Some(TokenStream::Insert(output)))
                         }else{
                             // we assume its a block handle blocks
                             // anything that ends with `;` and 
                             // start with create, drop or set etc etc
                             match self.read_while(&Token::SemiColon) {
                                 Ok(val) => {
-                                    let mut output = vec![];
-                                    output.push(token);
+                                    let mut output = Vec::from(token.value());
                                     output.extend(val);
                                     Ok(Some(TokenStream::Block(output)))
                                 },
@@ -188,7 +169,7 @@ impl<T> Parser<T> where T: io::Read{
                     Token::LP => {
                         match self.values_tuple() {
                             Ok(val) => {
-                                let mut output = vec![Token::LP];
+                                let mut output = Vec::from(token.value());
                                 output.extend(val);
                                 Ok(Some(TokenStream::ValuesTuple(output)))
                             },
@@ -197,7 +178,7 @@ impl<T> Parser<T> where T: io::Read{
                     }
                     Token::Comment(_) | 
                     Token::InlineComment(_) => {
-                        Ok(Some(TokenStream::Comment(token)))
+                        Ok(Some(TokenStream::Comment(token.value())))
                     },
                     Token::RP |
                     Token::Dot |
@@ -212,12 +193,11 @@ impl<T> Parser<T> where T: io::Read{
                     Token::SemiColon |
                     Token::Space |
                     Token::LineFeed(_) =>{
-                        Ok(Some(TokenStream::SpaceOrLineFeed(token)))
+                        Ok(Some(TokenStream::SpaceOrLineFeed(token.value())))
                     }
                 }
             },
-            Ok(None) => Ok(None),
-            Err(e) => Err(e),
+            None => Ok(None),
         }
     }
 }
@@ -258,7 +238,7 @@ mod reader_test{
         match value {
             Ok(Some(TokenStream::ValuesTuple(tokens))) => {
                 match tokens[tokens.len() - 1] {
-                    Token::SemiColon => (true, ""),
+                    b';' => (true, ""),
                     _ => (false, "Last token should be semicolon or comma"),
                 }
             },
@@ -270,7 +250,7 @@ mod reader_test{
         match value {
             Ok(Some(TokenStream::Block(tokens))) => {
                 match tokens[tokens.len() - 1] {
-                    Token::SemiColon => (true, ""),
+                    b';' => (true, ""),
                     _ => (false, "Last token should be semicolon"),
                 }
             },
@@ -282,8 +262,8 @@ mod reader_test{
         match value {
             Ok(Some(TokenStream::Insert(tokens))) => {
                 match tokens[tokens.len() - 1] {
-                    Token::SemiColon => (true, ""),
-                    Token::Comma => (true, ""),
+                    b';' => (true, ""),
+                    b',' => (true, ""),
                     _ => (false, "Last token should be semicolon or Comma"),
                 }
             },

@@ -47,54 +47,6 @@ impl Token {
             Token::LineFeed(byte) => vec![byte],
         }        
     }
-
-    pub fn len(&self) -> usize {
-        match self {
-            Token::Keyword(chunk) | 
-            Token::Comment(chunk) |
-            Token::String(chunk) |
-            Token::InlineComment(chunk) |
-            Token::Identifier(chunk) => chunk.len(),
-
-            Token::Dot |
-            Token::Space |
-            Token::LineFeed(_) | 
-            Token::Ignore(_) |
-            Token::LP | 
-            Token::RP |
-            Token::SemiColon |
-            Token::Comma => 1,
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn log(&self) {
-        match self {
-            Token::String(chunk) => self.log_bytes("String",  chunk),
-            Token::Keyword(chunk) => self.log_bytes("Keyword",  chunk),
-            Token::Comment(chunk) => self.log_bytes("Comment",  chunk),
-            Token::InlineComment(chunk) => self.log_bytes("InlineComment",  chunk),
-            Token::Identifier(chunk) => self.log_bytes("Identifier",  chunk),
-            Token::Ignore(byte) => self.log_byte("Ignore", byte.clone()),
-            Token::Comma => self.log_byte("Comma", b','),
-            Token::LP => self.log_byte("LP", b'('),
-            Token::RP => self.log_byte("RP", b')'),
-            Token::SemiColon => self.log_byte("SemiColon", b';'),
-            Token::LineFeed(byte) => self.log_byte("SemiColon", byte.clone()),
-            Token::Dot => self.log_byte("SemiColon", b'.'),
-            Token::Space => self.log_byte("SemiColon", b' '),
-        }
-    }
-
-    fn log_bytes(&self, index: &str, bytes: &Vec<u8>){
-        println!("{}: {:?}", index, str::from_utf8(&bytes).unwrap())
-    }
-
-    #[allow(dead_code)]
-    fn log_byte(&self, index: &str, byte: u8){
-        let vc = vec![byte];
-        self.log_bytes(index, &vc);
-    }
 }
 
 
@@ -208,14 +160,7 @@ impl<T> Tokenizer<T> where T: io::Read {
         match self.reader.peek() {
             Some(closing @ b'"') |
             Some(closing @ b'\'') => {
-                match self.read_string(closing) {
-                    Ok(value) => {
-                        Ok(Some(value))
-                    },
-                    Err(err) => {
-                        Err(err)
-                    },
-                }
+                Ok(Some(self.read_string(closing)?))
             },
             Some(byte @ b'/') => {
                 if self.reader.peek_next() == Some(b'*') {
@@ -228,13 +173,7 @@ impl<T> Tokenizer<T> where T: io::Read {
             Some(b'0'...b'9') => Ok(Some(self.number())),
             Some(byte @ b'-') => {
                 if self.reader.peek_next() == Some(b'-') {
-                    match self.read_till(b'\n') {
-                        Ok(item) => {
-                            Ok(Some(Token::InlineComment(item)))
-                        },
-                        Err(err) => Err(err),
-                    }
-                    
+                    Ok(Some(Token::InlineComment(self.read_till(b'\n')?)))
                 }else{
                     self.reader.increment_index();
                     Ok(Some(Token::Ignore(byte)))
@@ -242,23 +181,14 @@ impl<T> Tokenizer<T> where T: io::Read {
             },
             Some(b'a'...b'z') | 
             Some(b'A'...b'Z') => {
-                match self.keyword() {
-                    Ok(value) => {
-                        Ok(Some(Token::Keyword(value)))
-                    },
-                    Err(e) => Err(e),
-                }                
+                // let keyword = ;
+                Ok(Some(Token::Keyword(self.keyword()?)))
             },
             Some(byte @ b'`') => {
                 self.reader.increment_index(); // skip `
-                match self.read_till(b'`') {
-                    Ok(value) => {
-                        let mut identifier = vec![byte];
-                        identifier.extend(value);
-                        Ok(Some(Token::Identifier(identifier)))
-                    },
-                    Err(err) => Err(err),
-                }
+                let mut identifier = vec![byte];
+                identifier.extend(self.read_till(b'`')?);
+                Ok(Some(Token::Identifier(identifier)))
             },
             Some(b'.') => self.singular(Token::Dot),
             Some(b'(') => self.singular(Token::LP),
@@ -294,28 +224,4 @@ impl<T> Tokenizer<T> where T: io::Read {
         }
         Ok(Some(Token::Comment(collection)))
     }
-}
-
-
-#[cfg(test)]
-mod reader_test{
-    // use std::fs::File;
-    // use Reader;
-    // use super::Tokenizer;
-
-    // #[test]
-    // fn tokenizer(){
-    //     let read_buffer: usize = 1 * 1024 * 1024; // 1mb 
-    //     let file = File::open("./example-files/create-table-with-comments.txt").unwrap();
-    //     let reader = Reader::new(file, read_buffer);
-    //     let mut tk = Tokenizer::new(reader);
-    //     loop {
-    //         match tk.token() {
-    //             Some(item) => {
-    //                 println!("{:?}", item);
-    //             },
-    //             None => break,
-    //         }
-    //     }
-    // }
 }

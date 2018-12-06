@@ -1,6 +1,5 @@
 use parser::TokenStream;
 use parser::Parser;
-use tokenizer::Token;
 use tokenizer::Tokenizer;
 use tokenizer::SyntaxErr;
 use reader::Reader;
@@ -25,7 +24,7 @@ pub struct Splitter<T>{
     parser: Parser<T>,
     total_bytes: usize,
     max_write_size:usize,
-    last_insert: Vec<Token>,
+    last_insert: Vec<u8>,
     last_file_state: FileState,
 }
 
@@ -56,36 +55,20 @@ impl<T> Splitter<T> where T: io::Read {
      * Copy insert statement till VALUES
      * push extra white space after values
      * */ 
-    fn copy_insert_statement(&self, tokens: &[Token]) -> Vec<Token> {
-        let mut ret = vec![];
-        for token in tokens {
-            ret.push(token.clone());
-            if token.keyword("values") {
-                break;
-            }
-        }
+    // fn copy_insert_statement(&self, tokens: &[Token]) -> Vec<Token> {
+    //     let mut ret = vec![];
+    //     for token in tokens {
+    //         ret.push(token.clone());
+    //         if token.keyword("values") {
+    //             break;
+    //         }
+    //     }
 
-        ret.push(Token::Space);
-        ret
-    }
+    //     ret.push(Token::Space);
+    //     ret
+    // }
 
-    fn get_bytes(&self, tokens: Vec<Token>) -> Vec<u8> {
-        let mut collection = vec![];
-        for token in tokens {
-          collection.extend(token.value());
-        }
-
-        collection
-    }
-    fn sum(&self,  tokens: &Vec<Token>) -> usize {
-        let mut total = 0;
-        for token in tokens {
-          total += token.len();
-        }
-        total
-    }
-
-    fn send(&mut self, tokens: Vec<Token>) -> SplitterState {
+    fn send(&mut self, tokens: Vec<u8>) -> SplitterState {
         
         if self.reached_limit() {
             self.reset_limit();
@@ -96,7 +79,7 @@ impl<T> Splitter<T> where T: io::Read {
         
         
         
-        SplitterState::Chunk(&self.last_file_state, self.get_bytes(tokens))
+        SplitterState::Chunk(&self.last_file_state, tokens)
     }
 
     fn reset_limit(&mut self){
@@ -114,8 +97,8 @@ impl<T> Splitter<T> where T: io::Read {
             Ok(Some(item)) => {
                 match item {
                     TokenStream::Insert(tokens) => {
-                        self.last_insert = self.copy_insert_statement(&tokens);
-                        self.total_bytes += self.sum(&tokens);
+                        // self.last_insert = self.copy_insert_statement(&tokens);
+                        self.total_bytes += tokens.len();
                         self.send(tokens)
                     },
                     TokenStream::ValuesTuple(tokens) => {
@@ -127,25 +110,25 @@ impl<T> Splitter<T> where T: io::Read {
                         }
 
                         ret.extend(tokens);
-                        self.total_bytes += self.sum(&ret);
+                        self.total_bytes += ret.len();
                         
                         if self.reached_limit() {
                             // maxed out in value tuple 
                             // close statement
                             let len = ret.len() - 1;
-                            ret[len] = Token::SemiColon;
+                            ret[len] = b';';
                         }
 
                         self.send(ret)
                     },
                     TokenStream::Block(tokens) => {
-                        self.total_bytes += self.sum(&tokens);
+                        self.total_bytes += tokens.len();
                         self.send(tokens)
                     },
-                    TokenStream::Comment(token) |
-                    TokenStream::SpaceOrLineFeed(token) => {
-                        self.total_bytes += 1;
-                        self.send(vec![token])
+                    TokenStream::Comment(tokens) |
+                    TokenStream::SpaceOrLineFeed(tokens) => {
+                        self.total_bytes += tokens.len();
+                        self.send(tokens)
                     }
                 }
             },
