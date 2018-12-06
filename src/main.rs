@@ -7,7 +7,6 @@ mod cli;
 mod tokenizer;
 mod helper;
 
-use std::io::Result;
 use std::str;
 use std::process;use helper::write;
 use splitter::SplitterSettings;
@@ -20,7 +19,7 @@ fn log_error(err: &str) -> ! {
 }
 
 
-fn main() -> Result<()> {
+fn main(){
     let (file, write_buffer) = cli::args();
 
     let file = match file {
@@ -61,6 +60,4 @@ fn main() -> Result<()> {
             },
         }
     }
-
-    Ok(())
 }

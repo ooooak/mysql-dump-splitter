@@ -106,6 +106,7 @@ pub struct Tokenizer<T>{
     // line_num: usize,
 }
 
+#[derive(Debug)]
 pub struct SyntaxErr{
     // line_num: usize,
     pub text: &'static str

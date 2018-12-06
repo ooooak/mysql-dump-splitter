@@ -9,8 +9,7 @@ pub struct Reader<T>{
     bytes_read: usize,
 }
 
-impl<T> Reader<T> where 
-    T: io::Read {
+impl<T> Reader<T> where T: io::Read {
     pub fn new(file: T, buffer_size: usize) -> Self {
         // reader
         let mut reader = Self {

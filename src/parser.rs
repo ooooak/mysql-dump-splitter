@@ -4,11 +4,7 @@ use tokenizer::Token;
 use std::io;
 
 
-
-/**
- * We can only send tokens that can be written down to file
- * with little modification
- */ 
+#[derive(Debug,PartialEq)]
 pub enum TokenStream {
     Insert(Vec<Token>),
     ValuesTuple(Vec<Token>),
@@ -42,11 +38,13 @@ impl<T> Parser<T> where T: io::Read{
                     }
                 },
                 Ok(None) => {
-                    return Err(SyntaxErr {
+                    return Err(SyntaxErr{
                         text:"invalid end of file"
                     })
                 },
-                Err(err) => return  Err(err),
+                Err(err) => {
+                    return Err(err)
+                },
             }
         }
 
@@ -124,11 +122,6 @@ impl<T> Parser<T> where T: io::Read{
         Ok(collection)
     }
 
-
-    /**  
-     * Case one: insert into `x` values (1, 4);
-     * Case two: insert into x (id, price) values (1, 4), ();
-     **/
     fn insert(&mut self) ->  Result<Vec<Token>, SyntaxErr> {
         let mut collection = vec![];
         loop {
@@ -158,58 +151,43 @@ impl<T> Parser<T> where T: io::Read{
 
         Ok(collection)
     }
-    
-    /**
-     * We only send streams that we can write with little modification
-     * 
-     *  #TokenStream::Insert 
-     *   We are sending insert statement with first value.
-     *   reason to do that is we only want to send stream that we can write to
-     *   file with less modifications 
-     *   
-     *   insert can end with , or ;
-     *   TokenStream::Insert("insert into xyz values (),")
-     *   TokenStream::Insert("insert into xyz values ();")
-     * 
-     * 
-     *  #Token::Block
-     *   Blocks is anything that ends with ;
-     *   create sta
-     * */
+
     pub fn token_stream(&mut self) -> Result<Option<TokenStream>, SyntaxErr> {
         let t = self.tokenizer.token();
         // t.clone().unwrap().log();
         match t {
             Ok(Some(token)) => {
                 match token {
-                    Token::Keyword(_) => {
-                        let mut output = vec![];
-                        
+                    Token::Keyword(_) => { 
                         if token.keyword("insert") {
                             // parse insert statement
+                            // should end with with , or ;
+                            // example: "insert into xyz values (),"
+                            // example: "insert into xyz values ();"
                             match self.insert() {
                                 Ok(value) => {
-                                    output.push(token);
+                                    let mut output = vec![token];
                                     output.extend(value);
                                     Ok(Some(TokenStream::Insert(output)))
                                 },
-                                Err(e) => return Err(e),
+                                Err(e) => Err(e),
                             }
-                            
                         }else{
-                            // we parse block, thinks like create table, set x
-                            output.push(token);
+                            // we assume its a block handle blocks
+                            // anything that ends with `;` and 
+                            // start with create, drop or set etc etc
                             match self.read_while(Token::SemiColon) {
                                 Ok(val) => {
+                                    let mut output = vec![];
+                                    output.push(token);
                                     output.extend(val);
                                     Ok(Some(TokenStream::Block(output)))
                                 },
-                                Err(e) => return Err(e)   
+                                Err(e) => Err(e)   
                             }
                         }
                     },
                     Token::LP => {
-                        
                         match self.values_tuple() {
                             Ok(val) => {
                                 let mut output = vec![Token::LP];
@@ -233,8 +211,6 @@ impl<T> Parser<T> where T: io::Read{
                             text: "Invalid sql file."
                         })
                     },
-
-                    // SemiColon can be treated as white space
                     Token::SemiColon |
                     Token::Space |
                     Token::LineFeed(_) =>{
@@ -246,4 +222,148 @@ impl<T> Parser<T> where T: io::Read{
             Err(e) => Err(e),
         }
     }
+}
+
+
+
+
+#[cfg(test)]
+mod reader_test{
+    use std::fs::File;
+    use reader::Reader;
+    use tokenizer::Token;
+    use tokenizer::Tokenizer;
+    use tokenizer::SyntaxErr;
+    use super::Parser;
+    use super::TokenStream;
+
+    type TS = Result<Option<TokenStream>, SyntaxErr>;    
+    fn is_space(value: TS) -> bool {
+        match value {
+            Ok(Some(TokenStream::SpaceOrLineFeed(_))) => {
+                true
+            },
+            _ => false,
+        }
+    }
+
+    fn is_comment(value: TS) -> bool {
+        match value {
+            Ok(Some(TokenStream::Comment(_))) => {
+                true
+            },
+            _ => false,
+        }
+    }
+
+    fn valid_values_tuple(value: TS) -> (bool, &'static str) {
+        match value {
+            Ok(Some(TokenStream::ValuesTuple(tokens))) => {
+                match tokens[tokens.len() - 1] {
+                    Token::SemiColon => (true, ""),
+                    _ => (false, "Last token should be semicolon or comma"),
+                }
+            },
+            _ => (false, "expected ValuesTuple"),
+        }
+    }
+
+    fn valid_block(value: TS) -> (bool, &'static str) {
+        match value {
+            Ok(Some(TokenStream::Block(tokens))) => {
+                match tokens[tokens.len() - 1] {
+                    Token::SemiColon => (true, ""),
+                    _ => (false, "Last token should be semicolon"),
+                }
+            },
+            _ => (false, "expected block"),
+        }
+    }
+
+    fn valid_insert(value: TS) -> (bool, &'static str) {
+        match value {
+            Ok(Some(TokenStream::Insert(tokens))) => {
+                match tokens[tokens.len() - 1] {
+                    Token::SemiColon => (true, ""),
+                    Token::Comma => (true, ""),
+                    _ => (false, "Last token should be semicolon or Comma"),
+                }
+            },
+            _ => (false, "expected insert statement"),
+        }
+    }
+    
+    #[test]
+    fn tokenizer(){
+        let read_buffer: usize = 1 * 1024 * 1024;
+        let file = File::open("./example-files/1.txt").unwrap();
+        let tokenizer = Tokenizer::new(Reader::new(file, read_buffer));
+        
+        let mut parser = Parser::new(tokenizer);
+                
+        // inline comment
+        assert!(is_comment(parser.token_stream()), "Expecting a comment");
+        assert!(is_comment(parser.token_stream()), "Expecting a comment");
+        
+        // comment ends with "\n"
+        // so we only expect one new line 
+        assert!(is_space(parser.token_stream()), "white space");
+        assert!(is_space(parser.token_stream()), "white space");
+
+        // create table
+        let (state, msg) = valid_block(parser.token_stream());
+        assert!(state, msg);
+
+        // white space or line feed
+        assert!(is_space(parser.token_stream()), "white space");
+        assert!(is_space(parser.token_stream()), "white space");
+        assert!(is_space(parser.token_stream()), "white space");
+        assert!(is_space(parser.token_stream()), "white space");
+
+        // insert
+        let (state, msg) = valid_insert(parser.token_stream());
+        assert!(state, msg);
+
+        assert!(is_space(parser.token_stream()), "white space");
+        assert!(is_space(parser.token_stream()), "white space");
+
+        let (state, msg) = valid_insert(parser.token_stream());
+        assert!(state, msg);
+
+        // line feeds
+        assert!(is_space(parser.token_stream()), "white space");
+        assert!(is_space(parser.token_stream()), "white space");
+        assert!(is_space(parser.token_stream()), "white space");
+        assert!(is_space(parser.token_stream()), "white space");
+
+        // set FOREIGN_KEY_CHECKS block
+        let (state, msg) = valid_block(parser.token_stream());
+        assert!(state, msg);
+        
+        // line feed
+        assert!(is_space(parser.token_stream()), "white space");
+        assert!(is_space(parser.token_stream()), "white space");
+        assert!(is_space(parser.token_stream()), "white space");
+        assert!(is_space(parser.token_stream()), "white space");
+
+        // create table block
+        let (state, msg) = valid_block(parser.token_stream());
+        assert!(state, msg);
+
+        // line feed
+        assert!(is_space(parser.token_stream()), "white space");
+        assert!(is_space(parser.token_stream()), "white space");
+        assert!(is_space(parser.token_stream()), "white space");
+        assert!(is_space(parser.token_stream()), "white space");
+
+        // insert 
+        let (state, msg) = valid_insert(parser.token_stream());
+        assert!(state, msg);
+
+        // value tuple
+        let (state, msg) = valid_values_tuple(parser.token_stream());
+        assert!(state, msg);
+    }
+
+
 }
