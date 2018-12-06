@@ -22,7 +22,8 @@ impl<T> Reader<T> where T: io::Read {
         reader.read_buf();
         reader
     }
-    
+
+    #[inline(always)]
     fn raw_get(&mut self) -> Option<u8> {
         if self.bytes_read == 0 {
             return None
@@ -46,11 +47,11 @@ impl<T> Reader<T> where T: io::Read {
         self.index += 1;
         byte
     }
-    
+
     pub fn peek(&mut self) -> Option<u8> {
         self.raw_get()
     }
-    
+
     pub fn peek_next(&mut self) -> Option<u8> {
         self.index += 1;
         let item = self.raw_get();

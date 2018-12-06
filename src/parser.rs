@@ -25,12 +25,12 @@ impl<T> Parser<T> where T: io::Read{
     }
 
    
-    pub fn read_while(&mut self, token: Token) -> Result<Vec<Token>, SyntaxErr> {
+    pub fn read_while(&mut self, token: &Token) -> Result<Vec<Token>, SyntaxErr> {
         let mut collection = vec![];
         loop {
             match self.tokenizer.token() {
                 Ok(Some(t)) => {
-                    if t == token {
+                    if t == *token {
                         collection.push(t);
                         break
                     }else{
@@ -57,7 +57,7 @@ impl<T> Parser<T> where T: io::Read{
             match self.tokenizer.token() {
                 Ok(Some(token @ Token::LP)) => {
                     collection.push(token);
-                    match self.read_while(Token::RP) {
+                    match self.read_while(&Token::RP) {
                         Ok(val) => {
                             collection.extend(val);
                         },
@@ -72,7 +72,7 @@ impl<T> Parser<T> where T: io::Read{
                     collection.push(token);
                     break;
                 },
-                Ok(Some(token @ _)) => {
+                Ok(Some(token)) => {
                     collection.push(token);
                 },
                 Ok(None) => {
@@ -89,7 +89,7 @@ impl<T> Parser<T> where T: io::Read{
 
     pub fn values_tuple(&mut self) -> Result<Vec<Token>, SyntaxErr> {
         let mut collection = vec![];
-        match self.read_while(Token::RP) {
+        match self.read_while(&Token::RP) {
             Ok(val) => {
                 collection.extend(val);
             },
@@ -107,7 +107,7 @@ impl<T> Parser<T> where T: io::Read{
                     collection.push(token);
                     break;
                 },
-                Ok(Some(token @ _)) => {
+                Ok(Some(token)) => {
                     collection.push(token);
                 },
                 Ok(None) => {
@@ -176,7 +176,7 @@ impl<T> Parser<T> where T: io::Read{
                             // we assume its a block handle blocks
                             // anything that ends with `;` and 
                             // start with create, drop or set etc etc
-                            match self.read_while(Token::SemiColon) {
+                            match self.read_while(&Token::SemiColon) {
                                 Ok(val) => {
                                     let mut output = vec![];
                                     output.push(token);
@@ -194,7 +194,7 @@ impl<T> Parser<T> where T: io::Read{
                                 output.extend(val);
                                 Ok(Some(TokenStream::ValuesTuple(output)))
                             },
-                            Err(e) => return Err(e),
+                            Err(e) => Err(e),
                         }
                     }
                     Token::Comment(_) | 

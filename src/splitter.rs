@@ -53,7 +53,7 @@ impl<T> Splitter<T> where T: io::Read {
      * Copy insert statement till VALUES
      * push extra white space after values
      * */ 
-    fn copy_insert_statement(&self, tokens: &Vec<Token>) -> Vec<Token> {
+    fn copy_insert_statement(&self, tokens: &[Token]) -> Vec<Token> {
         let mut ret = vec![];
         for token in tokens {
             ret.push(token.clone());

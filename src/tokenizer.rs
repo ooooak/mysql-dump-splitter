@@ -172,14 +172,9 @@ impl<T> Tokenizer<T> where T: io::Read {
 
     fn number(&mut self) -> Token {
         let mut collection = vec![];
-        loop {
-            match self.reader.peek() {
-                Some(byte @ b'0'...b'9') => {
-                    self.reader.increment_index();
-                    collection.push(byte);
-                },
-                _ => break,
-            }
+        while let Some(byte @ b'0'...b'9') = self.reader.peek() {
+            self.reader.increment_index();
+            collection.push(byte);
         }
         Token::String(collection)
     }
@@ -211,7 +206,7 @@ impl<T> Tokenizer<T> where T: io::Read {
         self.reader.increment_index();
         Ok(Some(token))
     }
-
+    
     pub fn token(&mut self) -> Result<Option<Token>, SyntaxErr> {
         match self.reader.peek() {
             Some(closing @ b'"') |
@@ -300,7 +295,7 @@ impl<T> Tokenizer<T> where T: io::Read {
                 break
             }
         }
-        return Ok(Some(Token::Comment(collection)))
+        Ok(Some(Token::Comment(collection)))
     }
 }
 
