@@ -10,6 +10,11 @@ Usage
 $ sql-split.exe file.sql --output=20mb
 ```
 
+> Windows Binary is under `bin` dir.
+
+#### How to build
+> cargo build --release
+
 TODO:
 1. ~~`parse cli params `output_size`~~
 2. ~~write tests~~
