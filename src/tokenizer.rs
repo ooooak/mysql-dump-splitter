@@ -50,7 +50,7 @@ impl Token {
 }
 
 
-pub struct Tokenizer<T>{
+pub struct Tokenizer<T> {
     reader: Reader<T>,
     // line_num: usize,
 }
@@ -63,10 +63,7 @@ pub struct SyntaxErr{
 
 impl<T> Tokenizer<T> where T: io::Read {
     pub fn new(reader: Reader<T>) -> Self {
-        Self {
-            reader: reader,
-            // line_num: 0
-        }
+        Self {reader}
     }
 
     fn read_till(&mut self, item: u8) -> Result<Vec<u8>, SyntaxErr> {

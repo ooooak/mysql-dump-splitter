@@ -6,7 +6,7 @@ use std::io;
 
 #[derive(Debug,PartialEq)]
 pub enum TokenStream {
-    Insert(Vec<u8>),
+    Insert(Vec<u8>, Vec<u8>),
     ValuesTuple(Vec<u8>),
     Block(Vec<u8>),
     Comment(Vec<u8>),
@@ -19,12 +19,9 @@ pub struct Parser<T> {
 
 impl<T> Parser<T> where T: io::Read{
     pub fn new(tokenizer: Tokenizer<T>) -> Self {
-        Self {
-            tokenizer: tokenizer
-        }
+        Self { tokenizer }
     }
-
-   
+    
     pub fn read_while(&mut self, token: &Token) -> Result<Vec<u8>, SyntaxErr> {
         let mut collection = vec![];
         loop {
@@ -79,7 +76,6 @@ impl<T> Parser<T> where T: io::Read{
                 }
             }
         }
-
         Ok(collection)
     }
 
@@ -87,10 +83,8 @@ impl<T> Parser<T> where T: io::Read{
         let mut collection = vec![];
         let value = self.read_while(&Token::RP)?; 
         collection.extend(value);
-        
-
         loop {
-            match self.tokenizer.token()? {                    
+            match self.tokenizer.token()? {
                 Some(token @ Token::Comma) => {
                     collection.extend(token.value());
                     break;
@@ -99,9 +93,7 @@ impl<T> Parser<T> where T: io::Read{
                     collection.extend(token.value());
                     break;
                 },
-                Some(token) => {
-                    collection.extend(token.value());
-                },
+                Some(token) => collection.extend(token.value()),
                 None => {
                     return Err(SyntaxErr{
                         text: "Unable to parse values."
@@ -113,15 +105,18 @@ impl<T> Parser<T> where T: io::Read{
         Ok(collection)
     }
 
-    fn insert(&mut self) ->  Result<Vec<u8>, SyntaxErr> {
-        let mut collection = vec![];
-        let mut insert_st_cp = vec![];
+    fn insert(&mut self, token: Vec<u8>) ->  Result<(Vec<u8>, Vec<u8>), SyntaxErr> {
+        let mut collection = token;
+        let mut insert_stmt;
+
         loop {
             match self.tokenizer.token()? {
                 Some(token) => {
                     if token.keyword("values") {
                         collection.extend(token.value());
-                        insert_st_cp.extend(collection.clone());
+                        insert_stmt = collection.clone();
+                        insert_stmt.push(b' ');                        
+
                         collection.extend(self.values()?);                        
                         break;
                     }else{
@@ -136,7 +131,7 @@ impl<T> Parser<T> where T: io::Read{
             }
         }
 
-        Ok(collection)
+        Ok((collection, insert_stmt))
     }
 
     pub fn token_stream(&mut self) -> Result<Option<TokenStream>, SyntaxErr> {
@@ -149,32 +144,27 @@ impl<T> Parser<T> where T: io::Read{
                             // should end with with , or ;
                             // example: "insert into xyz values (),"
                             // example: "insert into xyz values ();"
-                            let mut output = Vec::from(token.value());
-                            output.extend(self.insert()?);
-                            Ok(Some(TokenStream::Insert(output)))
+
+                            let (insert, insert_stmt) = self.insert(token.value())?;
+                            Ok(Some(TokenStream::Insert(insert, insert_stmt)))
                         }else{
                             // we assume its a block handle blocks
                             // anything that ends with `;` and 
                             // start with create, drop or set etc etc
                             match self.read_while(&Token::SemiColon) {
                                 Ok(val) => {
-                                    let mut output = Vec::from(token.value());
+                                    let mut output = token.value();
                                     output.extend(val);
                                     Ok(Some(TokenStream::Block(output)))
                                 },
-                                Err(e) => Err(e)   
+                                Err(e) => Err(e)  
                             }
                         }
                     },
                     Token::LP => {
-                        match self.values_tuple() {
-                            Ok(val) => {
-                                let mut output = Vec::from(token.value());
-                                output.extend(val);
-                                Ok(Some(TokenStream::ValuesTuple(output)))
-                            },
-                            Err(e) => Err(e),
-                        }
+                        let mut output = token.value();
+                        output.extend(self.values_tuple()?);
+                        Ok(Some(TokenStream::ValuesTuple(output)))
                     }
                     Token::Comment(_) | 
                     Token::InlineComment(_) => {
@@ -192,7 +182,7 @@ impl<T> Parser<T> where T: io::Read{
                     },
                     Token::SemiColon |
                     Token::Space |
-                    Token::LineFeed(_) =>{
+                    Token::LineFeed(_) => {
                         Ok(Some(TokenStream::SpaceOrLineFeed(token.value())))
                     }
                 }
@@ -209,7 +199,6 @@ impl<T> Parser<T> where T: io::Read{
 mod reader_test{
     use std::fs::File;
     use reader::Reader;
-    use tokenizer::Token;
     use tokenizer::Tokenizer;
     use tokenizer::SyntaxErr;
     use super::Parser;
@@ -260,7 +249,7 @@ mod reader_test{
 
     fn valid_insert(value: TS) -> (bool, &'static str) {
         match value {
-            Ok(Some(TokenStream::Insert(tokens))) => {
+            Ok(Some(TokenStream::Insert(tokens, _))) => {
                 match tokens[tokens.len() - 1] {
                     b';' => (true, ""),
                     b',' => (true, ""),
@@ -273,9 +262,8 @@ mod reader_test{
     
     #[test]
     fn tokenizer(){
-        let read_buffer: usize = 1 * 1024 * 1024;
         let file = File::open("./example-files/1.txt").unwrap();
-        let tokenizer = Tokenizer::new(Reader::new(file, read_buffer));
+        let tokenizer = Tokenizer::new(Reader::new(file));
         
         let mut parser = Parser::new(tokenizer);
                 

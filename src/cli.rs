@@ -43,19 +43,20 @@ fn parse_size(input: Option<&str>, arg_name: &str) -> Result<usize, String> {
 }
 
 
-pub fn args() -> (Result<File, &'static str>, Result<usize, String>)  {
+pub fn args() -> (Result<File, &'static str>, Result<usize, String>) {
     let yaml = load_yaml!("../cli.yml");
     let matches = App::from_yaml(yaml).get_matches();
     let write_buffer = matches.value_of("OUTPUT_SIZE");
     let file = match matches.value_of("INPUT") {
         Some(file) => {
             let path = Path::new(file);
-            match path.exists() {
-                true => match File::open(path) {
+            if path.exists(){
+                match File::open(path) {
                     Ok(file) => Ok(file),
                     Err(_) => Err("Unable to open file"),
-                },
-                false => Err("File path is invalid"),
+                }
+            }else{
+                Err("File path is invalid")
             }
         },
         None => Err("File name is missing"),

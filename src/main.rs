@@ -39,20 +39,25 @@ fn main(){
     };
 
     let mut splitter = Splitter::new(SplitterSettings {
-        read: 10 * 1024 * 1024,
         write: write_buffer,
-        file: file,
+        file,
     });
 
     let mut file_count = 1;
     let mut buffer = create_file(file_count);
+    let mut first_file = true;
 
     loop {
         match splitter.process() {
             SplitterState::Chunk(file_state, tokens) => {
-                if *file_state == splitter::FileState::New {
+                if file_state == splitter::FileState::New {
+                    if first_file == true {
+                        first_file = false;
+                        continue;
+                    }
+
                     file_count += 1;
-                    buffer = create_file(file_count);                    
+                    buffer = create_file(file_count);
                 }
 
                 buffer.write_all(&tokens).unwrap();

@@ -3,17 +3,17 @@ use std::io::prelude::*;
 use std::io;
 
 pub struct Reader<T>{
-    buffer: Vec<u8>,
+    buffer: [u8; 4096],
     index: usize,
     reader: BufReader<T>,
     bytes_read: usize,
 }
 
 impl<T> Reader<T> where T: io::Read {
-    pub fn new(file: T, buffer_size: usize) -> Self {
+    pub fn new(file: T) -> Self {
         // reader
         let mut reader = Self {
-            buffer: vec![0; buffer_size],
+            buffer: [0; 4096],
             reader: BufReader::new(file),
             index: 0,
             bytes_read: 0,
@@ -33,7 +33,7 @@ impl<T> Reader<T> where T: io::Read {
             return if self.bytes_read <= self.index {
                 None
             }else{
-                Some(item.clone())
+                Some(*item)
             }
         }
 
@@ -86,15 +86,15 @@ mod reader_test{
     #[test]
     fn empty_file(){
         let file = File::open("./example-files/empty.txt").unwrap();
-        let mut reader = Reader::new(file, 1024);
+        let mut reader = Reader::new(file);
         assert_eq!(reader.get(), None);
     }
 
     #[test]
     fn get(){
-        for n in 1..=100 {
+        for _ in 1..=100 {
             let file = File::open("./example-files/content.txt").unwrap();
-            let mut reader = Reader::new(file, n);
+            let mut reader = Reader::new(file);
 
             // let mut col = vec![];
             // loop {                
@@ -125,7 +125,7 @@ mod reader_test{
     #[test]
     fn peek(){
         let file = File::open("./example-files/content.txt").unwrap();
-        let mut reader = Reader::new(file, 2);
+        let mut reader = Reader::new(file);
         assert_eq!(reader.peek(), Some(b'1'));
         let _skip_it = reader.get();
 
@@ -135,7 +135,7 @@ mod reader_test{
     #[test]
     fn peek_next(){
         let file = File::open("./example-files/content.txt").unwrap();
-        let mut reader = Reader::new(file, 10);
+        let mut reader = Reader::new(file);
         assert_eq!(reader.peek_next(), Some(b'2'));
         assert_eq!(reader.get(), Some(b'1'));
         assert_eq!(reader.get(), Some(b'2'));

@@ -6,18 +6,26 @@ use reader::Reader;
 use std::io;
 
 pub struct SplitterSettings<T>{
-    // Bytes to read 
-    pub read: usize,
-    // bytes to write
     pub write: usize,
     pub file: T,
 }
 
 
 #[derive(Debug,PartialEq,Clone)]
-pub enum FileState {
+pub enum FileState{
     New,
     Continue,
+}
+
+impl std::fmt::Display for FileState {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        use splitter::FileState;
+
+        match self{
+            FileState::New => write!(f, "{}", "New"),
+            FileState::Continue => write!(f, "{}", "Continue")
+        }        
+    }
 }
 
 pub struct Splitter<T>{
@@ -25,111 +33,85 @@ pub struct Splitter<T>{
     total_bytes: usize,
     max_write_size:usize,
     last_insert: Vec<u8>,
-    last_file_state: FileState,
 }
 
-pub enum SplitterState<'a>{
+pub enum SplitterState{
     SyntaxErr(SyntaxErr),
     // Reached output limit. send the chunk
-    Chunk(&'a FileState, Vec<u8>),
+    Chunk(FileState, Vec<u8>),
     // reached the EOF.
     Done,
 }
 
-/**
- * Splitter Should only send Valid output
- * */ 
 impl<T> Splitter<T> where T: io::Read {
     pub fn new(settings: SplitterSettings<T>) -> Self {
-        let tokenizer = Tokenizer::new(Reader::new(settings.file, settings.read));
+        let tokenizer = Tokenizer::new(Reader::new(settings.file));
         Self {
             parser: Parser::new(tokenizer),
             total_bytes: 0,
             last_insert: vec![],
             max_write_size: settings.write,
-            last_file_state: FileState::New,
         }
     }
 
-    /**
-     * Copy insert statement till VALUES
-     * push extra white space after values
-     * */ 
-    // fn copy_insert_statement(&self, tokens: &[Token]) -> Vec<Token> {
-    //     let mut ret = vec![];
-    //     for token in tokens {
-    //         ret.push(token.clone());
-    //         if token.keyword("values") {
-    //             break;
-    //         }
-    //     }
-
-    //     ret.push(Token::Space);
-    //     ret
-    // }
-
-    fn send(&mut self, tokens: Vec<u8>) -> SplitterState {
-        
-        if self.reached_limit() {
-            self.reset_limit();
-            self.last_file_state = FileState::New;            
+    fn file_state(&self, starting_total: usize) -> FileState {
+        if starting_total == 0 {
+            FileState::New
         }else{
-            self.last_file_state = FileState::Continue;            
+            FileState::Continue
         }
-        
-        
-        
-        SplitterState::Chunk(&self.last_file_state, tokens)
     }
 
-    fn reset_limit(&mut self){
-        self.total_bytes = 0;
+    fn send(&mut self, tokens: Vec<u8>, starting_total: usize) -> SplitterState {
+        self.total_bytes += tokens.len();
+        if self.reached_limit(self.total_bytes) {
+            self.total_bytes = 0;
+        }
+
+        SplitterState::Chunk(self.file_state(starting_total), tokens)
     }
 
-    fn reached_limit(&self) -> bool{
-        self.total_bytes >= self.max_write_size
+    fn reached_limit(&self, total: usize) -> bool{
+        total >= self.max_write_size
     }
 
+    fn copy_last_insert(&self, chunk: &mut Vec<u8>) {
+        chunk.extend(&self.last_insert)
+    }
 
+    fn close_values_tuple(&self, chunk: &mut Vec<u8>){
+        let len = chunk.len() - 1;
+        chunk[len] = b';';
+    }
+    
     pub fn process(&mut self) -> SplitterState {
-
+        let starting_total = self.total_bytes;
         match self.parser.token_stream() {
             Ok(Some(item)) => {
                 match item {
-                    TokenStream::Insert(tokens) => {
-                        // self.last_insert = self.copy_insert_statement(&tokens);
-                        self.total_bytes += tokens.len();
-                        self.send(tokens)
+                    TokenStream::Insert(insert_with_values, insert_stmt) => {
+                        self.last_insert = insert_stmt;                        
+                        self.send(insert_with_values, starting_total)
                     },
                     TokenStream::ValuesTuple(tokens) => {
                         let mut ret = vec![];
-                        if self.last_file_state == FileState::New {
-                            // starting with fresh collection
-                            // push last insert statement
-                            ret = self.last_insert.clone();
+                        // starting with fresh collection
+                        // push last insert statement
+                        if starting_total == 0 {
+                            self.copy_last_insert(&mut ret);
                         }
 
                         ret.extend(tokens);
-                        self.total_bytes += ret.len();
-                        
-                        if self.reached_limit() {
-                            // maxed out in value tuple 
-                            // close statement
-                            let len = ret.len() - 1;
-                            ret[len] = b';';
+                        // maxed out in value tuple close statement
+                        if self.reached_limit(starting_total + ret.len()) {
+                            self.close_values_tuple(&mut ret)
                         }
-
-                        self.send(ret)
+                        
+                        self.send(ret, starting_total)
                     },
-                    TokenStream::Block(tokens) => {
-                        self.total_bytes += tokens.len();
-                        self.send(tokens)
-                    },
+                    TokenStream::Block(tokens) => self.send(tokens, starting_total),
                     TokenStream::Comment(tokens) |
-                    TokenStream::SpaceOrLineFeed(tokens) => {
-                        self.total_bytes += tokens.len();
-                        self.send(tokens)
-                    }
+                    TokenStream::SpaceOrLineFeed(tokens) => self.send(tokens, starting_total),
                 }
             },
             Ok(None) => SplitterState::Done,
