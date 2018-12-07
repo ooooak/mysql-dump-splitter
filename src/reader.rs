@@ -92,34 +92,32 @@ mod reader_test{
 
     #[test]
     fn get(){
-        for _ in 1..=100 {
-            let file = File::open("./example-files/content.txt").unwrap();
-            let mut reader = Reader::new(file);
+        let file = File::open("./example-files/content.txt").unwrap();
+        let mut reader = Reader::new(file);
 
-            // let mut col = vec![];
-            // loop {                
-            //     let item = reader.get();
-            //     if !item.is_none() {
-            //         col.push(item.unwrap());
-            //         continue;
-            //     }
-            //     println!("buff: {:?} output: {:?}", n, str::from_utf8(&col));
-            //     break;
-            // }
-            
-            assert_eq!(reader.get(), Some(b'1'));
-            assert_eq!(reader.get(), Some(b'2'));
-            assert_eq!(reader.get(), Some(b'3'));
-            assert_eq!(reader.get(), Some(b'4'));
-            assert_eq!(reader.get(), Some(b'5'));
-            assert_eq!(reader.get(), Some(b'6'));
-            assert_eq!(reader.get(), Some(b'7'));
-            assert_eq!(reader.get(), Some(b'8'));
-            assert_eq!(reader.get(), Some(b'9'));
-            assert_eq!(reader.get(), Some(b'0'));
-            assert_eq!(reader.get().is_none(), true);
-            assert_eq!(reader.get().is_none(), true);
-        }
+        // let mut col = vec![];
+        // loop {                
+        //     let item = reader.get();
+        //     if !item.is_none() {
+        //         col.push(item.unwrap());
+        //         continue;
+        //     }
+        //     println!("buff: {:?} output: {:?}", n, str::from_utf8(&col));
+        //     break;
+        // }
+        
+        assert_eq!(reader.get(), Some(b'1'));
+        assert_eq!(reader.get(), Some(b'2'));
+        assert_eq!(reader.get(), Some(b'3'));
+        assert_eq!(reader.get(), Some(b'4'));
+        assert_eq!(reader.get(), Some(b'5'));
+        assert_eq!(reader.get(), Some(b'6'));
+        assert_eq!(reader.get(), Some(b'7'));
+        assert_eq!(reader.get(), Some(b'8'));
+        assert_eq!(reader.get(), Some(b'9'));
+        assert_eq!(reader.get(), Some(b'0'));
+        assert_eq!(reader.get().is_none(), true);
+        assert_eq!(reader.get().is_none(), true);
     }
 
     #[test]

@@ -144,7 +144,6 @@ impl<T> Tokenizer<T> where T: io::Read {
                 })
             }
         }
-
         Ok(Token::String(collection))
     }
 
