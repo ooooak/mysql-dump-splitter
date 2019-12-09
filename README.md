@@ -20,4 +20,4 @@ TODO:
 2. ~~write tests~~
 3. ~~fix unsafe code. remove die~~
 4. better error reporting
-5. add multi threading
+5. none blocking io
