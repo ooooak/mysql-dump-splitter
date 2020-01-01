@@ -1,23 +1,14 @@
 sql-split
 ------------
-sql-split is a command line tool to split SQL Dump file into small files.
+sql-split is a command line tool to split large SQL Dump file. It is designed to work on large datasets.
 
 
 Usage 
 ----------
 
 ```bash
-$ sql-split.exe file.sql --output=20mb
+$ sql-split.exe file.sql --output=200mb
 ```
 
-> Windows Binary is under `bin` dir.
-
-#### How to build
+#### build
 > cargo build --release
-
-TODO:
-1. ~~`parse cli params `output_size`~~
-2. ~~write tests~~
-3. ~~fix unsafe code. remove die~~
-4. better error reporting
-5. none blocking io
