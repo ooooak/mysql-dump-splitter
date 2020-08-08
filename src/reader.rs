@@ -2,8 +2,10 @@ use std::io::{BufReader};
 use std::io::prelude::*;
 use std::io;
 
+const DEFAULT_BUF_SIZE: usize = 8 * 1024;
+
 pub struct Reader<T>{
-    buffer: [u8; 4096],
+    buffer: [u8; DEFAULT_BUF_SIZE],
     index: usize,
     reader: BufReader<T>,
     bytes_read: usize,
@@ -13,7 +15,7 @@ impl<T> Reader<T> where T: io::Read {
     pub fn new(file: T) -> Self {
         // reader
         let mut reader = Self {
-            buffer: [0; 4096],
+            buffer: [0; DEFAULT_BUF_SIZE],
             reader: BufReader::new(file),
             index: 0,
             bytes_read: 0,
