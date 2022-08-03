@@ -1,4 +1,6 @@
-NOTE: This project is moved to https://github.com/ooooak/sql-split
+## NOTE: This project is moved to https://github.com/ooooak/sql-split
+
+--------------------
 
 sql-split
 ------------
